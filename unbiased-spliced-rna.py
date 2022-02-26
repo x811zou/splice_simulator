@@ -7,7 +7,7 @@ from distutils.debug import DEBUG
 from xmlrpc.client import boolean
 from xxlimited import Xxo
 import argparse
-from splice_reads import (
+from helper import (
     constructTwoBitInput,
     run2bitBatch,
     pickTranscript,
