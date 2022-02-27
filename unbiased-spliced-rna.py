@@ -1,23 +1,34 @@
 #!/usr/bin/env python
 # =========================================================================
-# This version has latest modification by Scarlett at 02/22/2022
+# This version is written by Scarlett
 # =========================================================================
 
+from curses.ascii import FF
 from distutils.debug import DEBUG
+
+# from doctest import
 from xmlrpc.client import boolean
 from xxlimited import Xxo
 import argparse
 from helper import (
-    constructTwoBitInput,
+    loop_transcript_for_fragLen,
+    tabix_regions,
+    variant_processor,
+    quality_string_processor,
+    read_length_processor,
+    simRead_patmat,
+    makeAltTranscript,
     run2bitBatch,
-    pickTranscript,
-    makeAltCopy,
+    constructTwoBitInput,
     annotate_transcripts,
-    printRead,
-    Variant,
     chunk_iter,
+    printRead,  #
+    pick_random_Transcript,
 )
+import helper
+import importlib
 
+spliced_reads = importlib.import_module("splice_reads.sim-spliced-rna")
 # The above imports should allow this program to run in both Python 2 and
 # Python 3.  You might need to update your version of module "future".
 import sys
@@ -56,154 +67,6 @@ from datetime import datetime
 # python sim-spliced-rna.py /Users/scarlett/allenlab/BEASTIE_other_example/HG00108_50M/random_splice_simulator/allchr.config 100 --chr chr21 -r -v
 # ============================================
 
-
-def tabix_regions(regions, line_processor, target_file_path=None, comment_char="#"):
-    CHUNK_SIZE = 1000
-    regions_processed = 0
-    region_to_results = {}
-
-    print(
-        f"{datetime.now()} Start tabix extraction of {len(regions)} regions from file {target_file_path}"
-    )
-
-    for x in chunk_iter(iter(regions), CHUNK_SIZE):
-        """
-        x stands for gene level chr: start-end
-        look up 1000 genes at a time
-        """
-        region_batch = " ".join(x)
-        cmd = f"tabix --separate-regions {target_file_path} {region_batch}"
-        output = Pipe.run(cmd)
-        if len(output) == 0:
-            continue
-
-        lines = output.split("\n")
-        records = []
-        for line in lines:
-            if len(line) == 0:
-                continue
-            # start accumulating new region
-            if line.startswith(comment_char):
-                region_str = line[1:]
-                records = []
-                region_to_results[region_str] = records
-                continue
-
-            result = line_processor(line)
-            if result is not None:
-                records.append(result)
-
-        regions_processed += len(x)
-        print(
-            f"{datetime.now()} ... finished {regions_processed} / {len(regions)} regions"
-        )
-
-    print(f"{datetime.now()} Got {len(region_to_results)} regions with data")
-
-    return region_to_results
-
-
-def variant_processor(line):
-    #########
-    # this function is used to fetch variants from .vcf
-    #########
-    fields = line.rstrip().split()
-    if len(fields) != 10:
-        raise Exception("Expecting 10 fields in VCF file")
-
-    variant = Variant(fields)
-    if not variant.isOK():
-        return None
-    if not variant.isHet() and not variant.isHomozygousAlt():
-        return None
-    return variant
-
-
-def quality_string_processor(line):
-    #########
-    # this function is used to fetch quality score from .sam.gz
-    # reference: https://samtools.github.io/hts-specs/SAMv1.pdf
-    # fields[8]: template length
-    # fields[10]: quality string
-    #########
-    fields = line.rstrip().split()
-
-    # skip reads with 0 length
-    if int(fields[8]) == 0:
-        return None
-    # skip reads without quality string
-    if len(fields) < 11:
-        return None
-
-    quality_string = fields[10]
-    return quality_string
-
-
-def read_length_processor(line):
-    #########
-    # this function is used to fetch read start pos and template length from .sam.gz
-    # fields[3]: start POS
-    # fields[8]: template length
-    #########
-    fields = line.rstrip().split()
-    # skip reads whose template length <= 0
-    # ['ERR188166.25392658', '147', 'chr6', '8558820', '255', '57M95982N18M', '=', '8436351', '-218526', 'GATGTCATTGAACTCTTAAGTGCAAGATGAAACAAGTCTTTCTGGGGTTCTAAGTAGAAGTGATCTACCTTTCTA', 'IJIIJJGHCDGHHGGF@BGHEHBCEFEHECGHHGGGGDEDHEEGEHHCHEHGHBAHEHGIHHH?FHHDDFFDC@@', 'MD:Z:75', 'PG:Z:MarkDuplicates', 'NH:i:1', 'HI:i:1', 'jI:B:i,8558877,8654858', 'NM:i:0', 'jM:B:c,0', 'nM:i:0', 'AS:i:140', 'XS:A:+']
-    # print(fields)
-    pos1 = int(fields[3])
-    tlen = int(fields[8])
-    # skip duplicated ones
-    if tlen <= 0:
-        return None
-    result = tuple((pos1, abs(tlen)))
-    # print(result)
-    return result
-
-
-def simRead_patmat(refTranscript, altTranscript, qual1, qual2, fragLen, readLen):
-    #####################################################################
-    # transcript length
-    L = len(refTranscript.sequence)
-    # transcript seq index start/end
-    L_end = L - 1
-    L_start = 0
-
-    # fragLen: actual read length drawn from SAM
-    if L_end < fragLen or L_end < readLen or L_end < len(qual1) or L_end < len(qual2):
-        return (None, None, None, None, None, None)
-    # transcript coord
-    lastStart = min(L_end - fragLen, L_end - len(qual1), L_end - len(qual2))  # 20
-    start1 = random.randrange(lastStart + 1)  # 10
-    end1 = start1 + len(qual1)  # rec1.readLen  # 10+75 = 85
-    LEN1 = abs(end1 - start1)
-    end2 = start1 + fragLen  # 10+80 = 90
-    start2 = end2 - len(qual2)  # rec2.readLen  # 90-75 = 15
-    LEN2 = abs(end2 - start2)
-    print(f"L{L}-Lstart:{L_start} - start2:{start2}")
-    assert start1 >= L_start
-    assert end1 <= L_end
-    assert start2 >= L_start
-    assert end2 <= L_end
-    assert len(qual1) == LEN1
-    assert len(qual2) == LEN2
-
-    # print(
-    #     f"qual1 {len(qual1)} qual2{len(qual2)} len1 {LEN1} len2 {LEN2} fwdSeq length{len(refSeq)} revSeq length {len(refSeq_rev)}"
-    # )
-
-    ######## forward strand, same sequence pos for mat/aptf fov
-    refSeq = refTranscript.sequence[start1:end1]
-    altSeq = altTranscript.sequence[start1:end1]
-    ######## reverse strand, same sequence pos for mat/apt rev
-    refSeq_rev = Seq(refTranscript.sequence[start2:end2]).reverse_complement()
-    altSeq_rev = Seq(altTranscript.sequence[start2:end2]).reverse_complement()
-    assert len(qual1) == len(refSeq)
-    assert len(qual2) == len(refSeq_rev)
-    return (refSeq, refSeq_rev, altSeq, altSeq_rev, LEN1, LEN2)
-
-
-# GLOBAL VARIABLES:
-# matches = 0  # number of sites containing alt or ref allele exactly as in gencode ref transcript
-# mismatches = 0  # number of sites having either or neither ref nor alt allele as in gencode ref transcript
 rex = Rex()
 # =========================================================================
 # main()
@@ -260,7 +123,7 @@ gffFile = configFile.lookupOrDie("gff")
 readLen = int(configFile.lookupOrDie("original-read-len"))
 out_path = configFile.lookupOrDie("out_path")
 
-
+if_debug = True
 if_print = str(if_print) == "True"
 if if_print:
     print(
@@ -288,10 +151,6 @@ else:
     )
 
 
-out_path_folder = out_path + "/" + "simulated_fastq"
-Path(out_path).mkdir(parents=True, exist_ok=True)
-Path(out_path_folder).mkdir(parents=True, exist_ok=True)
-
 # Load GFF and fragment lengths
 gffReader = GffTranscriptReader()
 print(f"{datetime.now()} reading GFF...", file=sys.stderr, flush=True)
@@ -304,6 +163,13 @@ if chromosome is not None:
     print(f"Looking at specific chromosome: {chromosome}")
     genes = list(filter(lambda x: x.getSubstrate() == chromosome, genes))
 
+    out_path = out_path + "/" + chromosome
+else:
+    out_path = out_path + "/allchr"
+out_path_folder = out_path + "/simulated_fastq"
+
+Path(out_path).mkdir(parents=True, exist_ok=True)
+Path(out_path_folder).mkdir(parents=True, exist_ok=True)
 
 ## DEBUG
 # DEBUG_GENES = ["ENSG00000180530.5"]
@@ -402,8 +268,12 @@ processed_genes = 0
 recorded_genes = 0
 not_in_sam = 0
 in_sam_not_in_vcf = 0
-
+list_fragLen = []
 for gene in genes:
+    list_start1 = []
+    list_start2 = []
+    list_end1 = []
+    list_end2 = []
     if gene.getSubstrate() == chromosome:
         transcript = gene.longestTranscript()
         transcript.exons = transcript.getRawExons()
@@ -417,18 +287,18 @@ for gene in genes:
         processed_genes += 1
 
         if not region_str in region_str_to_quality_strings:
-            if if_print:
-                print(f"{chrN},gene: {geneid}, no mapped reads in SAM, skip")
+            # if if_print:
+            #     print(f"{chrN},gene: {geneid}, no mapped reads in SAM, skip")
             not_in_sam += 1
             continue
         if not region_str in region_str_to_variants:
-            if if_print:
-                print(f"{chrN},gene: {geneid}, no variants/records in VCF, skip")
+            # if if_print:
+            #     print(f"{chrN},gene: {geneid}, no variants/records in VCF, skip")
             in_sam_not_in_vcf += 1
             continue
         if not region_str in region_str_to_fragLen:
-            if if_print:
-                print(f"{chrN},gene: {geneid}, no fragment length in SAM, skip")
+            # if if_print:
+            #     print(f"{chrN},gene: {geneid}, no fragment length in SAM, skip")
             continue
 
         variants = region_str_to_variants[region_str]
@@ -440,16 +310,16 @@ for gene in genes:
             continue
 
         recorded_genes += 1
-        if if_print:
-            print(
-                "%s,%s,#reads: %s,total #variants in VCF: %d"
-                % (region_str, geneid, numReads, len(variants))
-            )
+        # if if_print:
+        #     print(
+        #         "%s,%s,#reads: %s,total #variants in VCF: %d"
+        #         % (region_str, geneid, numReads, len(variants))
+        #     )
 
-        maternal, transcriptIdToBiSNPcount, transcriptIdToBiSNPpos = makeAltCopy(
+        maternal, transcriptIdToBiSNPcount, transcriptIdToBiSNPpos = makeAltTranscript(
             gene, 1, variants
         )
-        paternal, _, _ = makeAltCopy(gene, 0, variants)
+        paternal, _, _ = makeAltTranscript(gene, 0, variants)
         qual_idx = 0
         pos_idx = 0
         # counter = 0
@@ -462,92 +332,55 @@ for gene in genes:
                 th_transcript,
                 transcriptID,
                 bivariant,
-            ) = pickTranscript(maternal, paternal, transcriptIdToBiSNPpos)
+            ) = pick_random_Transcript(maternal, paternal, transcriptIdToBiSNPpos)
             transcript_length = matTranscript.getLength()
             # extract quality string from qual_strs in order
             ##########
-            # print(f"{qual_idx}-{len(qual_strs)}")
             fwd_qual = qual_strs[qual_idx]
             qual_idx = (qual_idx + 1) % len(qual_strs)
             rev_qual = qual_strs[qual_idx]
             qual_idx = (qual_idx + 1) % len(qual_strs)
-            # print(f"{qual_idx}-{len(qual_strs)}")
             ##########
-            # randomly draw actual-fragment-length from file
-            # fragLen = fragLens[random.randrange(len(fragLens))]
-            # print(pos_idx)
-            # print(f"{geneid} - {len(pos1_tlen)} - {pos_idx}-{pos1_tlen[pos_idx]}")
-            fragLen = None
-            initial_pos_idx = pos_idx
-            while True:
-                pos1, tlen = pos1_tlen[pos_idx]
-                pos_idx = (pos_idx + 1) % len(pos1_tlen)
-                begin = patTranscript.mapToTranscript(pos1)
-                end = patTranscript.mapToTranscript(pos1 + tlen)
-
-                # begin = transcript.mapToTranscript(pos1)
-                # end = transcript.mapToTranscript(pos1 + tlen)
-                candidateFragLen = abs(end - begin)
-                print(
-                    f"longest transcript idx:{pos_idx} - fragLen:{candidateFragLen} - pos1:{pos1} - tlen:{tlen} - begin:{begin} - end:{end}"
-                )
-                if begin >= 0 and end >= 0 and candidateFragLen < transcript_length:
-                    fragLen = candidateFragLen
-                    break
-                if pos_idx == initial_pos_idx:
-                    break
-
-            if fragLen is None:
-                print("coudl not find appropriate fraglen in longest transcript")
-                n = gene.getNumTranscripts()
-                # i = random.randrange(n)
-                for i in range(n):
-                    select_transcript = gene.getIthTranscript(i)
-                    initial_pos_idx = pos_idx
-                    while True:
-                        pos1, tlen = pos1_tlen[pos_idx]
-                        pos_idx = (pos_idx + 1) % len(pos1_tlen)
-                        begin = patTranscript.mapToTranscript(pos1)
-                        end = patTranscript.mapToTranscript(pos1 + tlen)
-
-                        # begin = transcript.mapToTranscript(pos1)
-                        # end = transcript.mapToTranscript(pos1 + tlen)
-                        candidateFragLen = abs(end - begin)
-                        print(
-                            f"transcript {i} idx:{pos_idx} - fragLen:{candidateFragLen} - pos1:{pos1} - tlen:{tlen} - begin:{begin} - end:{end}"
-                        )
-                        if (
-                            begin >= 0
-                            and end >= 0
-                            and candidateFragLen < transcript_length
-                        ):
-                            fragLen = candidateFragLen
-                            break
-                        if pos_idx == initial_pos_idx:
-                            break
-
-            if fragLen is None:
-                print("coudl not find appropriate fraglen in all transcript")
-                continue
-
-            # list_fragLen.append(fragLen)
             print(
-                f"{chrN}:{geneid}-{i} reads: pos indx {pos_idx} transcript len {transcript_length} - frag len {fragLen}"
+                f">>>>>>>>>>>>>>>> {i}th reads - transcript length {transcript_length}"
             )
-            # print(f"{geneid} - {pos1_tlen[pos_idx]} - {pos_idx}")
-            # print(f"begin {transcript.mapToTranscript(pos1)}")
-            # print(f"end {transcript.mapToTranscript(pos1+tlen)}")
-            # print(f"fragment length {fragLen} - {pos_idx} - {len(pos1_tlen)}")
-            ##########
-            # make sure transcript length >= randomly drawn actual-fragment-length
-            # if transcript_length < fragLen:
-            #     fragLen = transcript_length
+            fragLen, pos_idx = loop_transcript_for_fragLen(
+                i,
+                gene,
+                pos_idx,
+                pos1_tlen,
+                readLen,
+                transcript_length,
+                if_debug=if_debug,
+            )
+            pos_idx = (pos_idx + 1) % len(pos1_tlen)
 
+            if fragLen is None:
+                if if_debug:
+                    print(f">> {geneid} {i} th read skipped!")
+                n_break += 1
+                break
+            list_fragLen.append(fragLen)
             # simulate reads for paternal and maternal copy
-            (patSeq, patSeq_rev, matSeq, matSeq_rev, fwd_LEN, rev_LEN) = simRead_patmat(
+            (
+                patSeq,
+                patSeq_rev,
+                matSeq,
+                matSeq_rev,
+                fwd_LEN,
+                rev_LEN,
+                start1,
+                end1,
+                start2,
+                end2,
+            ) = simRead_patmat(
                 patTranscript, matTranscript, fwd_qual, rev_qual, fragLen, readLen
             )
-
+            list_fragLen.append(fragLen)
+            list_start1.append(start1)
+            list_end1.append(end1)
+            list_start2.append(start2)
+            list_end2.append(end2)
             if patSeq is None or matSeq is None:
                 n_break += 1
                 continue  # gene is shorter than fragment length
@@ -671,6 +504,17 @@ for gene in genes:
                     OUT2,
                 )
             nextReadID += 1
+        # if processed_genes <= 10:
+        #     out = out_path + "/start_end_pos" + "/" + str(geneid)
+        #     Path(out).mkdir(parents=True, exist_ok=True)
+        #     with open(out + "/start1", "wb") as fp:
+        #         pickle.dump(list_start1, fp)
+        #     with open(out + "/end1", "wb") as fp:
+        #         pickle.dump(list_end1, fp)
+        #     with open(out + "/start2", "wb") as fp:
+        #         pickle.dump(list_start2, fp)
+        #     with open(ovi testut + "/end2", "wb") as fp:
+        #         pickle.dump(list_end2, fp)
 
         if processed_genes % 500 == 0:
             print(
@@ -678,9 +522,10 @@ for gene in genes:
                 file=sys.stderr,
                 flush=True,
             )
+Path(out_path + "/fragLen").mkdir(parents=True, exist_ok=True)
+with open(out_path + "/fragLen.txt", "wb") as fp:
+    pickle.dump(list_fragLen, fp)
 
-# with open(out_path + "/fragLen", "wb") as fp:
-#     pickle.dump(list_fragLen, fp)
 print(
     f"{datetime.now()} DONE",
     file=sys.stderr,
