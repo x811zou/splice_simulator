@@ -1,6 +1,3 @@
-[submodule "BEASTIE"]
-	path = splice_reads
-	url = https://github.com/bmajoros/BEASTIE.git
 [submodule "python"]
 	path = misc_tools
 	url = https://github.com/x811zou/python.git

@@ -1,9 +1,6 @@
 #!/usr/bin/env python
-#!/usr/bin/env python
 # =========================================================================
-# Copyright (C)William H. Majoros (bmajoros@alumni.duke.edu)
-# =========================================================================
-# This version has latest modification by Scarlett
+# Copyright (C) Xue Zou (xue.zou@duke.edu)
 # =========================================================================
 from __future__ import (
     absolute_import,
@@ -54,29 +51,8 @@ from Bio.Seq import Seq
 from pathlib import Path
 from datetime import datetime
 
-# ============================================
-# DEPENDENCIES:
-#   module load htslib
-#   python version 3.x
-#   VCF file must be bzipped and indexed with tabix.
-#   VCF must contain only one sample (individual).
-#   VCF must include all sites, including homozygous and heterozygous sites.
-#
-# EXAMPLE CONFIG FILE:
-#   util-dir = /hpc/home/bmajoros/twobit
-#   genome = hg19.2bit
-#   aligned-rna = HG00096.sam
-#   fragment-lengths = fragmentlengths.txt
-#   vcf = HG00096.vcf.gz
-#   gff = gencode1000.gff
-#   original-read-len = 75
-# ============================================
-
 rex = Rex()
-
-# CLASSES:
-
-
+#######################################
 class Variant:
     def __init__(self, fields):
         self.Chr = fields[0]
@@ -100,32 +76,250 @@ class Variant:
         return self.genotype[0] > 0 and self.genotype[1] > 0
 
 
-def readFrom2bit(genome, path, Chr, start, end):
-    cmd = (
-        os.path.join(path, "twoBitToFa")
-        + " -seq="
-        + Chr
-        + " -start="
-        + str(start)
-        + " -end="
-        + str(end)
-        + " "
-        + genome
-        + " stdout"
+def printRead(header, seq, qual, FH):
+    print(header + "\n" + seq + "\n+\n" + qual, file=FH)
+
+
+def tabix_regions(regions, line_processor, target_file_path=None, comment_char="#"):
+    CHUNK_SIZE = 1000
+    regions_processed = 0
+    region_to_results = {}
+
+    print(
+        f"{datetime.now()} Start tabix extraction of {len(regions)} regions from file {target_file_path}"
     )
-    output = Pipe.run(cmd)
-    fields = output.rstrip().split("\n")
-    seq = ""
-    for i in range(1, len(fields)):
-        seq += fields[i]
-    return seq
+
+    for x in chunk_iter(iter(regions), CHUNK_SIZE):
+        """
+        x stands for gene level chr: start-end
+        look up 1000 genes at a time
+        """
+        region_batch = " ".join(x)
+        cmd = f"tabix --separate-regions {target_file_path} {region_batch}"
+        output = Pipe.run(cmd)
+        if len(output) == 0:
+            continue
+
+        lines = output.split("\n")
+        records = []
+        for line in lines:
+            if len(line) == 0:
+                continue
+            # start accumulating new region
+            if line.startswith(comment_char):
+                region_str = line[1:]
+                records = []
+                region_to_results[region_str] = records
+                continue
+
+            result = line_processor(line)
+            if result is not None:
+                records.append(result)
+
+        regions_processed += len(x)
+        print(
+            f"{datetime.now()} ... finished {regions_processed} / {len(regions)} regions"
+        )
+
+    print(f"{datetime.now()} Got {len(region_to_results)} regions with data")
+
+    return region_to_results
 
 
-def twoBitID(chr, begin, end):
-    return f"{chr}:{begin}-{end}"
+def variant_processor(line):
+    #########
+    # this function is used to fetch variants from .vcf
+    #########
+    fields = line.rstrip().split()
+    if len(fields) != 10:
+        raise Exception("Expecting 10 fields in VCF file")
+
+    variant = Variant(fields)
+    if not variant.isOK():
+        return None
+    if not variant.isHet() and not variant.isHomozygousAlt():
+        return None
+    return variant
 
 
-def pickTranscript(refGene, altGene, transcriptIdToBiSNPcount):
+def quality_string_processor(line):
+    #########
+    # this function is used to fetch quality score from .sam.gz
+    # reference: https://samtools.github.io/hts-specs/SAMv1.pdf
+    # fields[8]: template length
+    # fields[10]: quality string
+    #########
+    fields = line.rstrip().split()
+
+    # skip reads with 0 length
+    if int(fields[8]) == 0:
+        return None
+    # skip reads without quality string
+    if len(fields) < 11:
+        return None
+
+    quality_string = fields[10]
+    return quality_string
+
+
+def read_length_processor(line):
+    #########
+    # this function is used to fetch read start pos and template length from .sam.gz
+    # fields[3]: start POS
+    # fields[8]: template length
+    #########
+    fields = line.rstrip().split()
+    # skip reads whose template length <= 0
+    # ['ERR188166.25392658', '147', 'chr6', '8558820', '255', '57M95982N18M', '=', '8436351', '-218526', 'GATGTCATTGAACTCTTAAGTGCAAGATGAAACAAGTCTTTCTGGGGTTCTAAGTAGAAGTGATCTACCTTTCTA', 'IJIIJJGHCDGHHGGF@BGHEHBCEFEHECGHHGGGGDEDHEEGEHHCHEHGHBAHEHGIHHH?FHHDDFFDC@@', 'MD:Z:75', 'PG:Z:MarkDuplicates', 'NH:i:1', 'HI:i:1', 'jI:B:i,8558877,8654858', 'NM:i:0', 'jM:B:c,0', 'nM:i:0', 'AS:i:140', 'XS:A:+']
+    # print(fields)
+    pos1 = int(fields[3])
+    tlen = int(fields[8])
+    # skip duplicated ones
+    if tlen <= 0:
+        return None
+    result = tuple((pos1, abs(tlen)))
+    # print(result)
+    return result
+
+
+def simRead_patmat(refTranscript, altTranscript, qual1, qual2, fragLen, readLen):
+    #####################################################################
+    # transcript length
+    L = len(refTranscript.sequence)
+    # transcript seq index start/end
+    L_end = L - 1
+    L_start = 0
+
+    # fragLen: actual read length drawn from SAM
+    if L_end < fragLen or L_end < readLen or L_end < len(qual1) or L_end < len(qual2):
+        return (None, None, None, None, None, None)
+    # transcript coord
+    lastStart = min(L_end - fragLen, L_end - len(qual1), L_end - len(qual2))  # 20
+    start1 = random.randrange(lastStart + 1)  # 10
+    end1 = start1 + len(qual1)  # rec1.readLen  # 10+75 = 85
+    LEN1 = abs(end1 - start1)
+    end2 = start1 + fragLen  # 10+80 = 90
+    start2 = end2 - len(qual2)  # rec2.readLen  # 90-75 = 15
+    LEN2 = abs(end2 - start2)
+    # print(f"L{L}-Lstart:{L_start} - start2:{start2}")
+    assert start1 >= L_start
+    assert end1 <= L_end
+    assert start2 >= L_start
+    assert end2 <= L_end
+    assert len(qual1) == LEN1
+    assert len(qual2) == LEN2
+
+    # print(
+    #     f"qual1 {len(qual1)} qual2{len(qual2)} len1 {LEN1} len2 {LEN2} fwdSeq length{len(refSeq)} revSeq length {len(refSeq_rev)}"
+    # )
+
+    ######## forward strand, same sequence pos for mat/aptf fov
+    refSeq = refTranscript.sequence[start1:end1]
+    altSeq = altTranscript.sequence[start1:end1]
+    ######## reverse strand, same sequence pos for mat/apt rev
+    refSeq_rev = Seq(refTranscript.sequence[start2:end2]).reverse_complement()
+    altSeq_rev = Seq(altTranscript.sequence[start2:end2]).reverse_complement()
+    assert len(qual1) == len(refSeq)
+    assert len(qual2) == len(refSeq_rev)
+    return (
+        refSeq,
+        refSeq_rev,
+        altSeq,
+        altSeq_rev,
+        LEN1,
+        LEN2,
+        start1,
+        end1,
+        start2,
+        end2,
+    )
+
+
+if_print = False
+def print_verbose(s):
+    if if_print:
+        print(s)
+
+
+def loop_transcript_for_fragLen(
+    th_read, gene, pos_idx, pos1_tlen_list, readLen, transcript_length, if_debug
+):
+    longest_transcript = gene.longestTranscript()
+    fragLen, chosen_idx = pick_fragLen(
+        th_read,
+        pos1_tlen_list,
+        pos_idx,
+        longest_transcript,
+        readLen,
+        transcript_length,
+        if_debug=if_debug,
+    )
+    if fragLen is not None:
+        return fragLen, chosen_idx
+    if if_debug:
+        print(
+            ">> {th_read} th read: could not find appropriate fraglen in longest transcript"
+        )
+    n = gene.getNumTranscripts()
+    for i in range(n):
+        new_idx = 0
+        selected_transcript = gene.getIthTranscript(i)
+        fragLen, _ = pick_fragLen(
+            th_read,
+            pos1_tlen_list,
+            new_idx,
+            selected_transcript,
+            readLen,
+            transcript_length,
+            if_debug=if_debug,
+        )
+    if if_debug:
+        if fragLen is None:
+            print(
+                ">> {th_read} th read: coudl not find appropriate fraglen in all transcript"
+            )
+    return fragLen, pos_idx
+
+
+def pick_fragLen(
+    th_read,
+    pos1_tlen_list,
+    pos_idx,
+    transcript,
+    readLen,
+    transcript_length,
+    if_debug=False,
+):
+    """
+    output:
+    fragLen
+    pos_idx: position index of the tuple chosen for this fragLen
+    """
+    fragLen = None
+    initial_pos_idx = pos_idx
+    while True:
+        pos1, tlen = pos1_tlen_list[pos_idx]
+        pos_idx = (pos_idx + 1) % len(pos1_tlen_list)
+        begin = transcript.mapToTranscript(pos1)
+        end = transcript.mapToTranscript(pos1 + tlen)
+        candidateFragLen = abs(end - begin)
+        if if_debug:
+            print(
+                f"{th_read} th read: pos idx:{pos_idx} - fragLen:{candidateFragLen} - pos1:{pos1} - tlen:{tlen} - begin:{begin} - end:{end}"
+            )
+        if (
+            begin >= 0
+            and end >= 0
+            and candidateFragLen >= readLen
+            and candidateFragLen < transcript_length
+        ):
+            fragLen = candidateFragLen
+            return fragLen, pos_idx
+        if pos_idx == initial_pos_idx:
+            return fragLen, pos_idx
+
+
+def pick_random_Transcript(refGene, altGene, transcriptIdToBiSNPcount):
     n = refGene.getNumTranscripts()
     i = random.randrange(n)
     num = transcriptIdToBiSNPcount[refGene.getIthTranscript(i).getID()]
@@ -138,20 +332,11 @@ def pickTranscript(refGene, altGene, transcriptIdToBiSNPcount):
     )
 
 
-def printRead(header, seq, qual, FH):
-    print(header + "\n" + seq + "\n+\n" + qual, file=FH)
+def twoBitID(chr, begin, end):
+    return f"{chr}:{begin}-{end}"
 
 
-def loadFragLens(filename):
-    array = []
-    with open(filename, "rt") as IN:
-        for line in IN:
-            L = int(line)
-            array.append(L)
-    return array
-
-
-def loadTranscriptSeqs(gene, genome, path):
+def load_twoBit_TranscriptSeqs(gene, genome, path):
     Chr = gene.getSubstrate()
     strand = gene.getStrand()
 
@@ -186,8 +371,7 @@ def loadTranscriptSeqs(gene, genome, path):
             transcript.sequence += exon.sequence
 
 
-################## modified function ##################
-def makeAltCopy(gene, haplotype, variants, if_print=False):
+def makeAltTranscript(gene, haplotype, variants, if_print=False):
     #########
     # this function is used to create a set of REF copy of a gene transcrips, or ALT copy
     # REF copy (haplotype == 0): replace the REF allele for variants in ref gencode filtered transcript to actual REF allele in VCF
