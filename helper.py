@@ -201,7 +201,7 @@ def simRead_patmat(refTranscript, altTranscript, qual1, qual2, fragLen, readLen)
     end2 = start1 + fragLen  # 10+80 = 90
     start2 = end2 - len(qual2)  # rec2.readLen  # 90-75 = 15
     LEN2 = abs(end2 - start2)
-    # print(f"L{L}-Lstart:{L_start} - start2:{start2}")
+    print(f"L{L}-Lstart:{L_start} - start2:{start2}")
     assert start1 >= L_start
     assert end1 <= L_end
     assert start2 >= L_start
@@ -236,6 +236,8 @@ def simRead_patmat(refTranscript, altTranscript, qual1, qual2, fragLen, readLen)
 
 
 if_print = False
+
+
 def print_verbose(s):
     if if_print:
         print(s)
@@ -251,6 +253,7 @@ def loop_transcript_for_fragLen(
         pos_idx,
         longest_transcript,
         readLen,
+        max_qual_len,
         transcript_length,
         if_debug=if_debug,
     )
@@ -270,6 +273,7 @@ def loop_transcript_for_fragLen(
             new_idx,
             selected_transcript,
             readLen,
+            max_qual_len,
             transcript_length,
             if_debug=if_debug,
         )
@@ -287,6 +291,7 @@ def pick_fragLen(
     pos_idx,
     transcript,
     readLen,
+    max_qual_len,
     transcript_length,
     if_debug=False,
 ):
@@ -312,6 +317,7 @@ def pick_fragLen(
             and end >= 0
             and candidateFragLen >= readLen
             and candidateFragLen < transcript_length
+            and candidateFragLen >= max_qual_len
         ):
             fragLen = candidateFragLen
             return fragLen, pos_idx

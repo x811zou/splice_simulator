@@ -355,6 +355,7 @@ for gene in genes:
             qual_idx = (qual_idx + 1) % len(qual_strs)
             rev_qual = qual_strs[qual_idx]
             qual_idx = (qual_idx + 1) % len(qual_strs)
+            max_qual_len = max(len(fwd_qual), len(rev_qual))
             ##########
             # print(
             #    f">>>>>>>>>>>>>>>> {i}th reads - transcript length {transcript_length}"
@@ -365,6 +366,7 @@ for gene in genes:
                 pos_idx,
                 pos1_tlen,
                 readLen,
+                max_qual_len,
                 transcript_length,
                 if_debug=if_debug,
             )
@@ -375,7 +377,7 @@ for gene in genes:
                     print(f">> {geneid} {i} th read skipped!")
                 n_break += 1
                 break
-            list_fragLen.append(fragLen)
+            # list_fragLen.append(fragLen)
             # simulate reads for paternal and maternal copy
             (
                 patSeq,
@@ -391,11 +393,11 @@ for gene in genes:
             ) = simRead_patmat(
                 patTranscript, matTranscript, fwd_qual, rev_qual, fragLen, readLen
             )
-            list_fragLen.append(fragLen)
-            list_start1.append(start1)
-            list_end1.append(end1)
-            list_start2.append(start2)
-            list_end2.append(end2)
+            # list_fragLen.append(fragLen)
+            # list_start1.append(start1)
+            # list_end1.append(end1)
+            # list_start2.append(start2)
+            # list_end2.append(end2)
             if patSeq is None or matSeq is None:
                 n_break += 1
                 continue  # gene is shorter than fragment length
