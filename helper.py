@@ -201,7 +201,7 @@ def simRead_patmat(refTranscript, altTranscript, qual1, qual2, fragLen, readLen)
     end2 = start1 + fragLen  # 10+80 = 90
     start2 = end2 - len(qual2)  # rec2.readLen  # 90-75 = 15
     LEN2 = abs(end2 - start2)
-    # print(f"L{L}-Lstart:{L_start} - start2:{start2}")
+    print(f"L{L}-Lstart:{L_start} - start2:{start2}")
     assert start1 >= L_start
     assert end1 <= L_end
     assert start2 >= L_start
