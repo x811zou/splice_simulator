@@ -5,6 +5,7 @@
 
 from curses.ascii import FF
 from distutils.debug import DEBUG
+import string
 
 # from doctest import
 from xmlrpc.client import boolean
@@ -28,7 +29,7 @@ from helper import (
 import helper
 import importlib
 
-#spliced_reads = importlib.import_module("splice_reads.sim-spliced-rna")
+# spliced_reads = importlib.import_module("splice_reads.sim-spliced-rna")
 # The above imports should allow this program to run in both Python 2 and
 # Python 3.  You might need to update your version of module "future".
 import sys
@@ -164,11 +165,11 @@ if chromosome is not None:
     genes = list(filter(lambda x: x.getSubstrate() == chromosome, genes))
 
 #    out_path = out_path + "/" + chromosome
-#else:
+# else:
 #    out_path = out_path + "/allchr"
 out_path_folder = out_path
 
-#Path(out_path).mkdir(parents=True, exist_ok=True)
+# Path(out_path).mkdir(parents=True, exist_ok=True)
 Path(out_path_folder).mkdir(parents=True, exist_ok=True)
 
 ## DEBUG
@@ -195,7 +196,8 @@ print(
     flush=True,
 )
 
-twoBitInputFile = "/tmp/twobitinput"
+suffix = "".join([random.choice(string.ascii_letters) for i in range(6)])
+twoBitInputFile = f"/tmp/twobitinput_{suffix}"
 constructTwoBitInput(genes, twoBitInputFile)
 
 print(
@@ -341,9 +343,9 @@ for gene in genes:
             rev_qual = qual_strs[qual_idx]
             qual_idx = (qual_idx + 1) % len(qual_strs)
             ##########
-            #print(
+            # print(
             #    f">>>>>>>>>>>>>>>> {i}th reads - transcript length {transcript_length}"
-            #)
+            # )
             fragLen, pos_idx = loop_transcript_for_fragLen(
                 i,
                 gene,
@@ -522,8 +524,8 @@ for gene in genes:
                 file=sys.stderr,
                 flush=True,
             )
-#Path(out_path + "/fragLen").mkdir(parents=True, exist_ok=True)
-#with open(out_path + "/fragLen.txt", "wb") as fp:
+# Path(out_path + "/fragLen").mkdir(parents=True, exist_ok=True)
+# with open(out_path + "/fragLen.txt", "wb") as fp:
 #    pickle.dump(list_fragLen, fp)
 
 print(
