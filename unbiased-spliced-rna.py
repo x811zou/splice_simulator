@@ -28,7 +28,7 @@ from helper import (
 import helper
 import importlib
 
-spliced_reads = importlib.import_module("splice_reads.sim-spliced-rna")
+#spliced_reads = importlib.import_module("splice_reads.sim-spliced-rna")
 # The above imports should allow this program to run in both Python 2 and
 # Python 3.  You might need to update your version of module "future".
 import sys
@@ -123,7 +123,7 @@ gffFile = configFile.lookupOrDie("gff")
 readLen = int(configFile.lookupOrDie("original-read-len"))
 out_path = configFile.lookupOrDie("out_path")
 
-if_debug = True
+if_debug = False
 if_print = str(if_print) == "True"
 if if_print:
     print(
@@ -163,12 +163,12 @@ if chromosome is not None:
     print(f"Looking at specific chromosome: {chromosome}")
     genes = list(filter(lambda x: x.getSubstrate() == chromosome, genes))
 
-    out_path = out_path + "/" + chromosome
-else:
-    out_path = out_path + "/allchr"
-out_path_folder = out_path + "/simulated_fastq"
+#    out_path = out_path + "/" + chromosome
+#else:
+#    out_path = out_path + "/allchr"
+out_path_folder = out_path
 
-Path(out_path).mkdir(parents=True, exist_ok=True)
+#Path(out_path).mkdir(parents=True, exist_ok=True)
 Path(out_path_folder).mkdir(parents=True, exist_ok=True)
 
 ## DEBUG
@@ -341,9 +341,9 @@ for gene in genes:
             rev_qual = qual_strs[qual_idx]
             qual_idx = (qual_idx + 1) % len(qual_strs)
             ##########
-            print(
-                f">>>>>>>>>>>>>>>> {i}th reads - transcript length {transcript_length}"
-            )
+            #print(
+            #    f">>>>>>>>>>>>>>>> {i}th reads - transcript length {transcript_length}"
+            #)
             fragLen, pos_idx = loop_transcript_for_fragLen(
                 i,
                 gene,
@@ -522,9 +522,9 @@ for gene in genes:
                 file=sys.stderr,
                 flush=True,
             )
-Path(out_path + "/fragLen").mkdir(parents=True, exist_ok=True)
-with open(out_path + "/fragLen.txt", "wb") as fp:
-    pickle.dump(list_fragLen, fp)
+#Path(out_path + "/fragLen").mkdir(parents=True, exist_ok=True)
+#with open(out_path + "/fragLen.txt", "wb") as fp:
+#    pickle.dump(list_fragLen, fp)
 
 print(
     f"{datetime.now()} DONE",
