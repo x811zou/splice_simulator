@@ -79,7 +79,13 @@ rex = Rex()
 #     )
 # (configFile, DEPTH, if_random, if_print, prefix, outFile1, outFile2) = sys.argv[1:]
 parser = argparse.ArgumentParser()
-parser.add_argument("config_file", help="path to config file")
+parser.add_argument("twobit", help="full path to two bit")
+parser.add_argument("genome", help="full path to hg19.2bit")
+parser.add_argument("gff", help="full path to gencode gtf file")
+parser.add_argument("samgz", help="full path to sam.gz")
+parser.add_argument("vcf", help="full path to VCF file with chr")
+parser.add_argument("readLen", help="original read length from reads")
+parser.add_argument("out_path", help="output path")
 parser.add_argument("read_depth", help="per-base-read-depth")
 parser.add_argument(
     "--out1",
@@ -106,23 +112,30 @@ if args.verbose:
     print("printing mode turned on")
 
 print(args)
+twoBitDir = args.twobit
+genome2bit = args.genome
+gffFile = args.gff
+samFile = args.samgz
+vcfFile = args.vcf
+readLen = int(args.readLen)
+out_path = args.out_path
 chromosome = args.chr
 DEPTH = int(args.read_depth)
 outFile1 = args.out1
 outFile2 = args.out2
 if_random = args.random
 if_print = args.verbose
-configFile = args.config_file
+# configFile = args.config_file
 
 # Load config file
-configFile = ConfigFile(configFile)
-twoBitDir = configFile.lookupOrDie("util-dir")
-genome2bit = configFile.lookupOrDie("genome")
-vcfFile = configFile.lookupOrDie("vcf")
-samFile = configFile.lookupOrDie("aligned-rna")
-gffFile = configFile.lookupOrDie("gff")
-readLen = int(configFile.lookupOrDie("original-read-len"))
-out_path = configFile.lookupOrDie("out_path")
+# configFile = ConfigFile(configFile)
+# twoBitDir = configFile.lookupOrDie("util-dir")
+# genome2bit = configFile.lookupOrDie("genome")
+# vcfFile = configFile.lookupOrDie("vcf")
+# samFile = configFile.lookupOrDie("aligned-rna")
+# gffFile = configFile.lookupOrDie("gff")
+# readLen = int(configFile.lookupOrDie("original-read-len"))
+# out_path = configFile.lookupOrDie("out_path")
 
 if_debug = False
 if_print = str(if_print) == "True"
@@ -342,6 +355,7 @@ for gene in genes:
             qual_idx = (qual_idx + 1) % len(qual_strs)
             rev_qual = qual_strs[qual_idx]
             qual_idx = (qual_idx + 1) % len(qual_strs)
+            max_qual_len = max(len(fwd_qual), len(rev_qual))
             ##########
             # print(
             #    f">>>>>>>>>>>>>>>> {i}th reads - transcript length {transcript_length}"
@@ -352,6 +366,7 @@ for gene in genes:
                 pos_idx,
                 pos1_tlen,
                 readLen,
+                max_qual_len,
                 transcript_length,
                 if_debug=if_debug,
             )
@@ -362,7 +377,7 @@ for gene in genes:
                     print(f">> {geneid} {i} th read skipped!")
                 n_break += 1
                 break
-            list_fragLen.append(fragLen)
+            # list_fragLen.append(fragLen)
             # simulate reads for paternal and maternal copy
             (
                 patSeq,
@@ -378,11 +393,11 @@ for gene in genes:
             ) = simRead_patmat(
                 patTranscript, matTranscript, fwd_qual, rev_qual, fragLen, readLen
             )
-            list_fragLen.append(fragLen)
-            list_start1.append(start1)
-            list_end1.append(end1)
-            list_start2.append(start2)
-            list_end2.append(end2)
+            # list_fragLen.append(fragLen)
+            # list_start1.append(start1)
+            # list_end1.append(end1)
+            # list_start2.append(start2)
+            # list_end2.append(end2)
             if patSeq is None or matSeq is None:
                 n_break += 1
                 continue  # gene is shorter than fragment length
