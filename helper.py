@@ -244,7 +244,7 @@ def print_verbose(s):
 
 
 def loop_transcript_for_fragLen(
-    th_read, gene, pos_idx, pos1_tlen_list, readLen, transcript_length, if_debug
+    th_read, gene, pos_idx, pos1_tlen_list, readLen, max_qual_len,transcript_length, if_debug
 ):
     longest_transcript = gene.longestTranscript()
     fragLen, chosen_idx = pick_fragLen(
