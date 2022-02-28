@@ -167,7 +167,7 @@ if chromosome is not None:
 #    out_path = out_path + "/" + chromosome
 # else:
 #    out_path = out_path + "/allchr"
-out_path_folder = out_path
+out_path_folder = out_path + "/simulated_fastq"
 
 # Path(out_path).mkdir(parents=True, exist_ok=True)
 Path(out_path_folder).mkdir(parents=True, exist_ok=True)
