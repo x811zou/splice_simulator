@@ -41,15 +41,14 @@ import random
 import copy
 import gzip
 import os
-from collections import defaultdict
 from misc_tools.GffTranscriptReader import GffTranscriptReader
 from misc_tools.Pipe import Pipe
 from misc_tools.ConfigFile import ConfigFile
-from misc_tools.Translation import Translation
 from misc_tools.Rex import Rex
 from Bio.Seq import Seq
 from pathlib import Path
 from datetime import datetime
+from misc_tools.Translation import Translation
 
 rex = Rex()
 #######################################
@@ -201,7 +200,7 @@ def simRead_patmat(refTranscript, altTranscript, qual1, qual2, fragLen, readLen)
     end2 = start1 + fragLen  # 10+80 = 90
     start2 = end2 - len(qual2)  # rec2.readLen  # 90-75 = 15
     LEN2 = abs(end2 - start2)
-    print(f"L{L}-Lstart:{L_start} - start2:{start2}")
+    # print(f"L{L}-Lstart:{L_start} - start2:{start2}")
     assert start1 >= L_start
     assert end1 <= L_end
     assert start2 >= L_start
@@ -247,7 +246,7 @@ def posTlen_to_fragLen(gene, pos1_tlen_list, readLen):
     fragLen_list = []
     transcript_len = []
     for pos1, tlen in pos1_tlen_list:
-        print(f">>> {pos1}-{tlen}:")
+        # print(f">>> {pos1}-{tlen}:")
         n = gene.getNumTranscripts()
         for i in range(n):
             selected_transcript = gene.getIthTranscript(i)
@@ -257,11 +256,11 @@ def posTlen_to_fragLen(gene, pos1_tlen_list, readLen):
             transcript_len.append(selected_transcript.getLength())
             if begin >= 0 and end >= 0 and candidateFragLen >= readLen:
                 fragLen_list.append(candidateFragLen)
-                print(f"   {i}th transcript - {candidateFragLen}")
-            else:
-                print(
-                    f"    skipped --> {i}th transcript - {candidateFragLen} = {end} - {begin}"
-                )
+                # print(f"   {i}th transcript - {candidateFragLen}")
+            # else:
+            #     print(
+            #         f"    skipped --> {i}th transcript - {candidateFragLen} = {end} - {begin}"
+            #     )
     if len(fragLen_list) > 0:
         if min(fragLen_list) > max(transcript_len):
             fragLen_list = []
@@ -269,10 +268,10 @@ def posTlen_to_fragLen(gene, pos1_tlen_list, readLen):
 
 
 def pick_fragLen(fragLens, max_qual_len, transcript_length):
-    print(fragLens)
+    # print(fragLens)
     random.shuffle(fragLens)
     for fragLen in fragLens:
-        print(fragLen)
+        # print(fragLen)
         if fragLen < transcript_length and fragLen >= max_qual_len:
             return fragLen
     return None
