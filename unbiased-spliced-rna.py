@@ -64,16 +64,12 @@ def makeAltTranscript(gene, haplotype, variants, if_print=False):
     # match: allele in gencode ref transcript (reversed if in reverse strand) MATCH the allele in VCF
     # mismatch: ... NOT MATCH ...
     #########
-    global matches
-    global mismatches
+    if haplotype == 0:
+        global matches
+        global mismatches
     altGene = copy.deepcopy(gene)
     transcriptIdToBiSNPcount = {}
     transcriptIdToBiSNPpos = defaultdict(set)
-    if if_print:
-        if haplotype == 0:
-            print("    ref/paternal")
-        else:
-            print("    alt/maternal")
     transcript_num = 0
     # loop through each ref gencode transcript, create a REF/ALT copy based on VCF
     for transcript in altGene.transcripts:
@@ -83,76 +79,69 @@ def makeAltTranscript(gene, haplotype, variants, if_print=False):
         num = 0
         # loop through each bi-allelic SNP from VCF
         for variant in variants:
-            if_rev = False
             trans_pos = transcript.mapToTranscript(variant.genomicPos)
-            # genom_pos = transcript.mapToGenome(trans_pos)
-            allele_in_ref = array[trans_pos]
-            if len(variant.ref) == 1 and len(variant.alt) == 1 and trans_pos >= 0:
-                if_bi = True
-                if if_print:
-                    print(
-                        " genomic pos is %d, trans pos is %d"
-                        % (variant.genomicPos, trans_pos)
-                    )
-                if variant.genotype[0] != variant.genotype[1]:
-                    transcriptIdToBiSNPpos[transcript.getID()].add(trans_pos)
-                    num += 1
-                ########################## use REF/ALT allele in VCF to modify the reference transcript
-                if variant.genotype[haplotype] != 0:
-                    allele_in_vcf = variant.alt
-                else:
-                    # if variant.ref == allele_in_ref:
-                    #     matches += 1
-                    # else:
-                    #     mismatches += 1
-                    allele_in_vcf = variant.ref
-                ########################## reverse the allele if it is in the reverse strand
-                if gene.getStrand() == "-":
-                    if_rev = True
-                    allele_in_ref = Translation.reverseComplement(allele_in_ref)
-                    array[trans_pos] = Translation.reverseComplement(allele_in_vcf)
-                    allele_check = array[trans_pos]
-                else:
-                    array[trans_pos] = allele_in_vcf
-                    allele_check = array[trans_pos]
-                ##########################  check match/mismatch
-                if allele_check == allele_in_ref:
+            if trans_pos < 0:
+                continue
+            if variant.genotype[0] != variant.genotype[1]:
+                transcriptIdToBiSNPpos[transcript.getID()].add(trans_pos)
+                num += 1
+            # sanity check
+            if haplotype == 0:
+                ref_in_ref = array[trans_pos]
+                allele_in_vcf = variant.ref
+                if (
+                    gene.getStrand() == "-"
+                ):  # reverse the allele if it is in the reverse strand
+                    allele_in_vcf = Translation.reverseComplement(allele_in_vcf)
+                allele_check = allele_in_vcf
+                print(
+                    f">>> {gene.getStrand()} -- VCF: {variant.genotype[0]} | {variant.genotype[1]} - {variant.ref}|{variant.alt}; vcf {allele_check} vs reference: {ref_in_ref}"
+                )
+                if allele_check == ref_in_ref:
+                    print("match")
                     matches += 1
                 else:
+                    print("mismatch")
                     mismatches += 1
-                ##########################
-                if if_print is not False:
-                    print(
-                        "        %dth transcript, %dth bi-allelic SNP"
-                        % (transcript_num, num)
-                    )
-                    print(
-                        "            > if reverse strand: %s, variant trans pos: %s, haplotype: %s, in ref genome: %s, allele check %s, ref: %s, alt: %s, write_in_sequence: %s"
-                        % (
-                            str(if_rev),
-                            trans_pos,
-                            variant.genotype,
-                            allele_in_ref,
-                            allele_check,
-                            variant.ref,
-                            variant.alt,
-                            array[trans_pos],
-                        )
-                    )
+
+            # use REF/ALT allele in VCF to modify the reference transcript
+            if variant.genotype[haplotype] > 0:
+                allele_in_vcf = variant.alt
+                if (
+                    gene.getStrand() == "-"
+                ):  # reverse the allele if it is in the reverse strand
+                    allele_in_vcf = Translation.reverseComplement(allele_in_vcf)
+                array[trans_pos] = allele_in_vcf
+
+            ##########################
+            # if if_print is not False:
+            #     print(
+            #         "        %dth transcript, %dth bi-allelic SNP"
+            #         % (transcript_num, num)
+            #     )
+            #     print(
+            #         "            > if reverse strand: %s, variant trans pos: %s, haplotype: %s, in ref genome: %s, allele check %s, ref: %s, alt: %s, write_in_sequence: %s"
+            #         % (
+            #             str(if_rev),
+            #             trans_pos,
+            #             variant.genotype,
+            #             allele_in_ref,
+            #             allele_check,
+            #             variant.ref,
+            #             variant.alt,
+            #             array[trans_pos],
+            #         )
+            #     )
         transcript.sequence = "".join(array)
         transcriptIdToBiSNPcount[transcript.getID()] = num
         # print(transcriptIdToBiSNPpos)
-        if if_print:
-            print(
-                "        >>>>>> %dth transcript, in total %d bi-allelic SNP"
-                % (transcript_num, num)
-            )
-            print(" ")
-    return (
-        altGene,
-        transcriptIdToBiSNPcount,
-        transcriptIdToBiSNPpos,
-    )
+        # if if_print:
+        #     print(
+        #         "        >>>>>> %dth transcript, in total %d bi-allelic SNP"
+        #         % (transcript_num, num)
+        #     )
+        #     print(" ")
+    return altGene, transcriptIdToBiSNPpos, transcript_num
 
 
 # ============================================
@@ -432,13 +421,13 @@ for gene in genes:
             continue
 
         ###### filtering 2
-        #print(">>>>>>>>>>>>>>>> input pos1_tlen list")
+        # print(">>>>>>>>>>>>>>>> input pos1_tlen list")
         # print(pos1_tlen)
         fragLen_list = posTlen_to_fragLen(gene, pos1_tlen, readLen)
         if len(fragLen_list) == 0:
-            #print("empty fragLen list!")
+            # print("empty fragLen list!")
             continue
-        #print(">>>>>>>>>>>>>>>> output fragLen list")
+        # print(">>>>>>>>>>>>>>>> output fragLen list")
         # print(fragLen_list)
         recorded_genes += 1
         # if if_print:
@@ -447,10 +436,10 @@ for gene in genes:
         #         % (region_str, geneid, numReads, len(variants))
         #     )
 
-        maternal, transcriptIdToBiSNPcount, transcriptIdToBiSNPpos = makeAltTranscript(
+        maternal, transcriptIdToBiSNPpos, transcript_num = makeAltTranscript(
             gene, 1, variants
         )
-        paternal, _, _ = makeAltTranscript(gene, 0, variants)
+        paternal, transcriptIdToBiSNPpos, _ = makeAltTranscript(gene, 0, variants)
         qual_idx = 0
         # pos_idx = 0
         # counter = 0

@@ -136,7 +136,10 @@ def variant_processor(line):
     variant = Variant(fields)
     if not variant.isOK():
         return None
-    if not variant.isHet() and not variant.isHomozygousAlt():
+    # not het and not homoalt
+    if not (variant.isHet() and not variant.isHomozygousAlt()):
+        return None
+    if not (len(variant.ref) == 1 and len(variant.alt) == 1):
         return None
     return variant
 
