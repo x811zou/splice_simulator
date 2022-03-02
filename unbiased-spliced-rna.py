@@ -12,13 +12,13 @@ from xmlrpc.client import boolean
 from xxlimited import Xxo
 import argparse
 from helper import (
-    loop_transcript_for_fragLen,
+    posTlen_to_fragLen,
+    pick_fragLen,
     tabix_regions,
     variant_processor,
     quality_string_processor,
     read_length_processor,
     simRead_patmat,
-    makeAltTranscript,
     run2bitBatch,
     constructTwoBitInput,
     annotate_transcripts,
@@ -45,6 +45,115 @@ from misc_tools.Rex import Rex
 from Bio.Seq import Seq
 from pathlib import Path
 from datetime import datetime
+from collections import defaultdict
+from misc_tools.Translation import Translation
+
+rex = Rex()
+# GLOBAL VARIABLES:
+matches = 0  # number of sites containing alt or ref allele in transcript
+mismatches = 0  # number of sites having neither ref nor alt allele in transcript
+
+
+def makeAltTranscript(gene, haplotype, variants, if_print=False):
+    #########
+    # this function is used to create a set of REF copy of a gene transcrips, or ALT copy
+    # REF copy (haplotype == 0): replace the REF allele for variants in ref gencode filtered transcript to actual REF allele in VCF
+    # ALT copy (haplotype == 1): replace the REF allele for variants in ref gencode filtered transcript to actual ALT allele in VCF
+    # allele_in_vcf : allele in VCF
+    # allele_in_ref : allele in reference transcript (gencode GTF hg19.v19)
+    # match: allele in gencode ref transcript (reversed if in reverse strand) MATCH the allele in VCF
+    # mismatch: ... NOT MATCH ...
+    #########
+    global matches
+    global mismatches
+    altGene = copy.deepcopy(gene)
+    transcriptIdToBiSNPcount = {}
+    transcriptIdToBiSNPpos = defaultdict(set)
+    if if_print:
+        if haplotype == 0:
+            print("    ref/paternal")
+        else:
+            print("    alt/maternal")
+    transcript_num = 0
+    # loop through each ref gencode transcript, create a REF/ALT copy based on VCF
+    for transcript in altGene.transcripts:
+        # print(f"transcript {transcript_num}len {len(transcript.sequence)}")
+        array = list(transcript.sequence)
+        transcript_num += 1
+        num = 0
+        # loop through each bi-allelic SNP from VCF
+        for variant in variants:
+            if_rev = False
+            trans_pos = transcript.mapToTranscript(variant.genomicPos)
+            # genom_pos = transcript.mapToGenome(trans_pos)
+            allele_in_ref = array[trans_pos]
+            if len(variant.ref) == 1 and len(variant.alt) == 1 and trans_pos >= 0:
+                if_bi = True
+                if if_print:
+                    print(
+                        " genomic pos is %d, trans pos is %d"
+                        % (variant.genomicPos, trans_pos)
+                    )
+                if variant.genotype[0] != variant.genotype[1]:
+                    transcriptIdToBiSNPpos[transcript.getID()].add(trans_pos)
+                    num += 1
+                ########################## use REF/ALT allele in VCF to modify the reference transcript
+                if variant.genotype[haplotype] != 0:
+                    allele_in_vcf = variant.alt
+                else:
+                    # if variant.ref == allele_in_ref:
+                    #     matches += 1
+                    # else:
+                    #     mismatches += 1
+                    allele_in_vcf = variant.ref
+                ########################## reverse the allele if it is in the reverse strand
+                if gene.getStrand() == "-":
+                    if_rev = True
+                    allele_in_ref = Translation.reverseComplement(allele_in_ref)
+                    array[trans_pos] = Translation.reverseComplement(allele_in_vcf)
+                    allele_check = array[trans_pos]
+                else:
+                    array[trans_pos] = allele_in_vcf
+                    allele_check = array[trans_pos]
+                ##########################  check match/mismatch
+                if allele_check == allele_in_ref:
+                    matches += 1
+                else:
+                    mismatches += 1
+                ##########################
+                if if_print is not False:
+                    print(
+                        "        %dth transcript, %dth bi-allelic SNP"
+                        % (transcript_num, num)
+                    )
+                    print(
+                        "            > if reverse strand: %s, variant trans pos: %s, haplotype: %s, in ref genome: %s, allele check %s, ref: %s, alt: %s, write_in_sequence: %s"
+                        % (
+                            str(if_rev),
+                            trans_pos,
+                            variant.genotype,
+                            allele_in_ref,
+                            allele_check,
+                            variant.ref,
+                            variant.alt,
+                            array[trans_pos],
+                        )
+                    )
+        transcript.sequence = "".join(array)
+        transcriptIdToBiSNPcount[transcript.getID()] = num
+        # print(transcriptIdToBiSNPpos)
+        if if_print:
+            print(
+                "        >>>>>> %dth transcript, in total %d bi-allelic SNP"
+                % (transcript_num, num)
+            )
+            print(" ")
+    return (
+        altGene,
+        transcriptIdToBiSNPcount,
+        transcriptIdToBiSNPpos,
+    )
+
 
 # ============================================
 # DEPENDENCIES:
@@ -68,7 +177,6 @@ from datetime import datetime
 # python sim-spliced-rna.py /Users/scarlett/allenlab/BEASTIE_other_example/HG00108_50M/random_splice_simulator/allchr.config 100 --chr chr21 -r -v
 # ============================================
 
-rex = Rex()
 # =========================================================================
 # main()
 # =========================================================================
@@ -266,7 +374,7 @@ region_str_to_quality_strings = tabix_regions(
 ####### extract fragment length
 # dict4: gene_to_fragLen {gene region}:{quality string score from sam.gz}
 #######
-region_str_to_fragLen = tabix_regions(
+region_str_to_posLen = tabix_regions(
     regions, read_length_processor, samFile, comment_char="@"
 )
 # print(region_str_to_fragLen)
@@ -283,12 +391,12 @@ processed_genes = 0
 recorded_genes = 0
 not_in_sam = 0
 in_sam_not_in_vcf = 0
-list_fragLen = []
+# list_fragLen = []
 for gene in genes:
-    list_start1 = []
-    list_start2 = []
-    list_end1 = []
-    list_end2 = []
+    # list_start1 = []
+    # list_start2 = []
+    # list_end1 = []
+    # list_end2 = []
     if gene.getSubstrate() == chromosome:
         transcript = gene.longestTranscript()
         transcript.exons = transcript.getRawExons()
@@ -301,6 +409,7 @@ for gene in genes:
         numReads = int(float(DEPTH / readLen) * length)
         processed_genes += 1
 
+        ###### filtering 1
         if not region_str in region_str_to_quality_strings:
             # if if_print:
             #     print(f"{chrN},gene: {geneid}, no mapped reads in SAM, skip")
@@ -311,19 +420,26 @@ for gene in genes:
             #     print(f"{chrN},gene: {geneid}, no variants/records in VCF, skip")
             in_sam_not_in_vcf += 1
             continue
-        if not region_str in region_str_to_fragLen:
+        if not region_str in region_str_to_posLen:
             # if if_print:
             #     print(f"{chrN},gene: {geneid}, no fragment length in SAM, skip")
             continue
 
         variants = region_str_to_variants[region_str]
         qual_strs = region_str_to_quality_strings[region_str]
-        pos1_tlen = region_str_to_fragLen[region_str]
-        # print(pos1_tlen)
-
+        pos1_tlen = region_str_to_posLen[region_str]
         if len(qual_strs) == 0 or len(pos1_tlen) == 0:
             continue
 
+        ###### filtering 2
+        print(">>>>>>>>>>>>>>>> input pos1_tlen list")
+        print(pos1_tlen)
+        fragLen_list = posTlen_to_fragLen(gene, pos1_tlen, readLen)
+        if len(fragLen_list) == 0:
+            print("empty fragLen list!")
+            continue
+        print(">>>>>>>>>>>>>>>> output fragLen list")
+        print(fragLen_list)
         recorded_genes += 1
         # if if_print:
         #     print(
@@ -336,7 +452,7 @@ for gene in genes:
         )
         paternal, _, _ = makeAltTranscript(gene, 0, variants)
         qual_idx = 0
-        pos_idx = 0
+        # pos_idx = 0
         # counter = 0
         list_fragLen = []
 
@@ -360,23 +476,18 @@ for gene in genes:
             # print(
             #    f">>>>>>>>>>>>>>>> {i}th reads - transcript length {transcript_length}"
             # )
-            fragLen, pos_idx = loop_transcript_for_fragLen(
-                i,
-                gene,
-                pos_idx,
-                pos1_tlen,
-                readLen,
-                max_qual_len,
-                transcript_length,
-                if_debug=if_debug,
-            )
-            pos_idx = (pos_idx + 1) % len(pos1_tlen)
+
+            fragLen = pick_fragLen(fragLen_list, max_qual_len, transcript_length)
+            # pos_idx = (pos_idx + 1) % len(pos1_tlen)
 
             if fragLen is None:
                 if if_debug:
-                    print(f">> {geneid} {i} th read skipped!")
+                    print(
+                        f">> {geneid} {i} th read skipped! coudl not find appropriate fraglen"
+                    )
                 n_break += 1
-                break
+                continue
+
             # list_fragLen.append(fragLen)
             # simulate reads for paternal and maternal copy
             (
@@ -551,7 +662,9 @@ print(
 print("")
 print(">> total geneID in gtf: %d" % (num_gene_gtf))
 print(">> total ReadID processed: %d" % (nextReadID))
-# print(f">> # matches: {matches}, # mismatches: {mismatches}")
+print(
+    f">> # matches: {matches}, # mismatches: {mismatches}, percentage of matches: {round(matches/(mismatches+matches),2)*100}%"
+)
 print(">> total num breaks /gene is shorter than fragment length : %d" % (n_break))
 print(
     f">> # recorded genes : {recorded_genes}, # processed_genes: {processed_genes}, percentage: {round(recorded_genes/processed_genes,2)*100}%"
