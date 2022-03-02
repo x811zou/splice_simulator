@@ -380,7 +380,7 @@ processed_genes = 0
 recorded_genes = 0
 not_in_sam = 0
 in_sam_not_in_vcf = 0
-list_fragLen = []
+# list_fragLen = []
 for gene in genes:
     # list_start1 = []
     # list_start2 = []
@@ -443,7 +443,7 @@ for gene in genes:
         qual_idx = 0
         # pos_idx = 0
         # counter = 0
-        list_fragLen = []
+        # list_fragLen = []
 
         for i in range(numReads):
             (
@@ -477,7 +477,7 @@ for gene in genes:
                 n_break += 1
                 continue
 
-            list_fragLen.append(fragLen)
+            # list_fragLen.append(fragLen)
             # simulate reads for paternal and maternal copy
             (
                 patSeq,
@@ -639,9 +639,9 @@ for gene in genes:
                 file=sys.stderr,
                 flush=True,
             )
-Path(out_path + "/fragLen").mkdir(parents=True, exist_ok=True)
-with open(out_path + "/fragLen.txt", "wb") as fp:
-    pickle.dump(list_fragLen, fp)
+# Path(out_path + "/fragLen").mkdir(parents=True, exist_ok=True)
+# with open(out_path + "/fragLen.txt", "wb") as fp:
+#     pickle.dump(list_fragLen, fp)
 
 print(
     f"{datetime.now()} DONE",
