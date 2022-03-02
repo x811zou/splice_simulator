@@ -243,49 +243,42 @@ def print_verbose(s):
         print(s)
 
 
-def loop_transcript_for_fragLen(
-    th_read, gene, pos_idx, pos1_tlen_list, readLen, max_qual_len,transcript_length, if_debug
-):
-    longest_transcript = gene.longestTranscript()
-    fragLen, chosen_idx = pick_fragLen(
-        th_read,
-        pos1_tlen_list,
-        pos_idx,
-        longest_transcript,
-        readLen,
-        max_qual_len,
-        transcript_length,
-        if_debug=if_debug,
-    )
-    if fragLen is not None:
-        return fragLen, chosen_idx
-    if if_debug:
-        print(
-            ">> {th_read} th read: could not find appropriate fraglen in longest transcript"
-        )
-    n = gene.getNumTranscripts()
-    for i in range(n):
-        new_idx = 0
-        selected_transcript = gene.getIthTranscript(i)
-        fragLen, _ = pick_fragLen(
-            th_read,
-            pos1_tlen_list,
-            new_idx,
-            selected_transcript,
-            readLen,
-            max_qual_len,
-            transcript_length,
-            if_debug=if_debug,
-        )
-    if if_debug:
-        if fragLen is None:
-            print(
-                ">> {th_read} th read: coudl not find appropriate fraglen in all transcript"
-            )
-    return fragLen, pos_idx
+def posTlen_to_fragLen(gene, pos1_tlen_list, readLen):
+    fragLen_list = []
+    transcript_len = []
+    for pos1, tlen in pos1_tlen_list:
+        print(f">>> {pos1}-{tlen}:")
+        n = gene.getNumTranscripts()
+        for i in range(n):
+            selected_transcript = gene.getIthTranscript(i)
+            begin = selected_transcript.mapToTranscript(pos1)
+            end = selected_transcript.mapToTranscript(pos1 + tlen)
+            candidateFragLen = abs(end - begin)
+            transcript_len.append(selected_transcript.getLength())
+            if begin >= 0 and end >= 0 and candidateFragLen >= readLen:
+                fragLen_list.append(candidateFragLen)
+                print(f"   {i}th transcript - {candidateFragLen}")
+            else:
+                print(
+                    f"    skipped --> {i}th transcript - {candidateFragLen} = {end} - {begin}"
+                )
+    if len(fragLen_list) > 0:
+        if min(fragLen_list) > max(transcript_len):
+            fragLen_list = []
+    return fragLen_list
 
 
-def pick_fragLen(
+def pick_fragLen(fragLens, max_qual_len, transcript_length):
+    print(fragLens)
+    random.shuffle(fragLens)
+    for fragLen in fragLens:
+        print(fragLen)
+        if fragLen < transcript_length and fragLen >= max_qual_len:
+            return fragLen
+    return None
+
+
+def pick_fragLen_X(
     th_read,
     pos1_tlen_list,
     pos_idx,
@@ -375,103 +368,6 @@ def load_twoBit_TranscriptSeqs(gene, genome, path):
                     + str(exon.end)
                 )
             transcript.sequence += exon.sequence
-
-
-def makeAltTranscript(gene, haplotype, variants, if_print=False):
-    #########
-    # this function is used to create a set of REF copy of a gene transcrips, or ALT copy
-    # REF copy (haplotype == 0): replace the REF allele for variants in ref gencode filtered transcript to actual REF allele in VCF
-    # ALT copy (haplotype == 1): replace the REF allele for variants in ref gencode filtered transcript to actual ALT allele in VCF
-    # allele_in_vcf : allele in VCF
-    # allele_in_ref : allele in reference transcript (gencode GTF hg19.v19)
-    # match: allele in gencode ref transcript (reversed if in reverse strand) MATCH the allele in VCF
-    # mismatch: ... NOT MATCH ...
-    #########
-    # global matches
-    # global mismatches
-    altGene = copy.deepcopy(gene)
-    transcriptIdToBiSNPcount = {}
-    transcriptIdToBiSNPpos = defaultdict(set)
-    if if_print:
-        if haplotype == 0:
-            print("    ref/paternal")
-        else:
-            print("    alt/maternal")
-    transcript_num = 0
-    # loop through each ref gencode transcript, create a REF/ALT copy based on VCF
-    for transcript in altGene.transcripts:
-        # print(f"transcript {transcript_num}len {len(transcript.sequence)}")
-        array = list(transcript.sequence)
-        transcript_num += 1
-        num = 0
-        # loop through each bi-allelic SNP from VCF
-        for variant in variants:
-            if_rev = False
-            trans_pos = transcript.mapToTranscript(variant.genomicPos)
-            # genom_pos = transcript.mapToGenome(trans_pos)
-            allele_in_ref = array[trans_pos]
-            if len(variant.ref) == 1 and len(variant.alt) == 1 and trans_pos >= 0:
-                if_bi = True
-                if if_print:
-                    print(
-                        " genomic pos is %d, trans pos is %d"
-                        % (variant.genomicPos, trans_pos)
-                    )
-                if variant.genotype[0] != variant.genotype[1]:
-                    transcriptIdToBiSNPpos[transcript.getID()].add(trans_pos)
-                    num += 1
-                ########################## use REF/ALT allele in VCF to modify the reference transcript
-                if variant.genotype[haplotype] != 0:
-                    allele_in_vcf = variant.alt
-                else:
-                    allele_in_vcf = variant.ref
-                ########################## reverse the allele if it is in the reverse strand
-                if gene.getStrand() == "-":
-                    if_rev = True
-                    allele_in_ref = Translation.reverseComplement(allele_in_ref)
-                    array[trans_pos] = Translation.reverseComplement(allele_in_vcf)
-                    allele_check = array[trans_pos]
-                else:
-                    array[trans_pos] = allele_in_vcf
-                    allele_check = array[trans_pos]
-                ##########################  check match/mismatch
-                # if allele_check == allele_in_ref:
-                #    matches += 1
-                # else:
-                #    mismatches += 1
-                ##########################
-                if if_print is not False:
-                    print(
-                        "        %dth transcript, %dth bi-allelic SNP"
-                        % (transcript_num, num)
-                    )
-                    print(
-                        "            > if reverse strand: %s, variant trans pos: %s, haplotype: %s, in ref genome: %s, allele check %s, ref: %s, alt: %s, write_in_sequence: %s"
-                        % (
-                            str(if_rev),
-                            trans_pos,
-                            variant.genotype,
-                            allele_in_ref,
-                            allele_check,
-                            variant.ref,
-                            variant.alt,
-                            array[trans_pos],
-                        )
-                    )
-        transcript.sequence = "".join(array)
-        transcriptIdToBiSNPcount[transcript.getID()] = num
-        # print(transcriptIdToBiSNPpos)
-        if if_print:
-            print(
-                "        >>>>>> %dth transcript, in total %d bi-allelic SNP"
-                % (transcript_num, num)
-            )
-            print(" ")
-    return (
-        altGene,
-        transcriptIdToBiSNPcount,
-        transcriptIdToBiSNPpos,
-    )
 
 
 def run2bitBatch(path, inputFile, genome):
