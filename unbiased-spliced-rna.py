@@ -94,14 +94,14 @@ def makeAltTranscript(gene, haplotype, variants, if_print=False):
                 ):  # reverse the allele if it is in the reverse strand
                     allele_in_vcf = Translation.reverseComplement(allele_in_vcf)
                 allele_check = allele_in_vcf
-                print(
-                    f">>> {gene.getStrand()} -- VCF: {variant.genotype[0]} | {variant.genotype[1]} - {variant.ref}|{variant.alt}; vcf {allele_check} vs reference: {ref_in_ref}"
-                )
+                # print(
+                #     f">>> {gene.getStrand()} -- VCF: {variant.genotype[0]} | {variant.genotype[1]} - {variant.ref}|{variant.alt}; vcf {allele_check} vs reference: {ref_in_ref}"
+                # )
                 if allele_check == ref_in_ref:
-                    print("match")
+                    # print("match")
                     matches += 1
                 else:
-                    print("mismatch")
+                    # print("mismatch")
                     mismatches += 1
 
             # use REF/ALT allele in VCF to modify the reference transcript
