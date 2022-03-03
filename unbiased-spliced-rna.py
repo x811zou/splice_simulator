@@ -6,7 +6,9 @@
 from concurrent.futures import process
 from curses.ascii import FF
 from distutils.debug import DEBUG
+import re
 import string
+import tempfile
 import time
 
 # from doctest import
@@ -193,6 +195,11 @@ parser.add_argument(
     help="output name for reverse strand fastq reads, default: read2.fastq.gz",
     default="read2.fastq.gz",
 )
+parser.add_argument(
+    '--out-prefix',
+    help="prefix applied to output file names",
+    default=""
+)
 parser.add_argument("--chr", help="specific chromosome to simulate")
 parser.add_argument("--gene", help="specific gene to simulate")
 parser.add_argument(
@@ -207,8 +214,8 @@ if args.chr:
     print(f"single chromosome mode turned on : {args.chr}")
 if args.verbose:
     print("printing mode turned on")
+    print(args)
 
-print(args)
 twoBitDir = args.twobit
 genome2bit = args.genome
 gffFile = args.gff
@@ -221,6 +228,7 @@ target_gene = args.gene
 DEPTH = args.read_depth
 outFile1 = args.out1
 outFile2 = args.out2
+outPrefix = args.out_prefix
 if_random = args.random
 if_print = args.verbose
 # configFile = args.config_file
@@ -236,7 +244,6 @@ if_print = args.verbose
 # out_path = configFile.lookupOrDie("out_path")
 
 if_debug = False
-if_print = str(if_print) == "True"
 if if_print:
     print(
         f"{datetime.now()} Yes, print out simulation logs...",
@@ -250,7 +257,6 @@ else:
         flush=True,
     )
 
-if_random = str(if_random) == "True"
 if if_random:
     print(
         f"{datetime.now()} generate RANDOM pat/mat reads...",
@@ -262,11 +268,36 @@ else:
         f"{datetime.now()} generate EQUAL pat/mat reads...", file=sys.stderr, flush=True
     )
 
+outFile1 = outPrefix + outFile1
+outFile2 = outPrefix + outFile2
+if if_print:
+    print(f"output file names {outFile1} {outFile2}")
+
 
 # Load GFF and fragment lengths
 gffReader = GffTranscriptReader()
 print(f"{datetime.now()} reading GFF...", file=sys.stderr, flush=True)
-genes = gffReader.loadGenes(gffFile)
+
+gffFilterRegex = ""
+if chromosome is not None:
+    gffFilterRegex = f"^{chromosome}\s"
+if target_gene is not None:
+    gffFilterRegex += f".*{target_gene}"
+
+if len(gffFilterRegex) > 0:
+    if if_print:
+        print(f"Filtering gffFile with {gffFilterRegex}")
+    with tempfile.NamedTemporaryFile(mode='w') as filteredGffFile, (gzip.open(gffFile, 'rt') if gffFile.endswith('.gz') else open(gffFile, 'r')) as inputGff:
+        regex=re.compile(gffFilterRegex)
+        for line in inputGff:
+            if regex.match(line):
+                filteredGffFile.write(line)
+        filteredGffFile.flush()
+            
+        genes = gffReader.loadGenes(filteredGffFile.name)
+else:
+    genes = gffReader.loadGenes(gffFile)
+
 genes.sort(key=lambda gene: (gene.getSubstrate(), gene.getBegin()))
 print(f"{datetime.now()} done reading GFF...", file=sys.stderr, flush=True)
 
@@ -387,257 +418,256 @@ for gene in genes:
     # list_start2 = []
     # list_end1 = []
     # list_end2 = []
-    if gene.getSubstrate() == chromosome:
-        transcript = gene.longestTranscript()
-        transcript.exons = transcript.getRawExons()
-        transcript.recomputeBoundaries()
-        region_str = f"{gene.getSubstrate()}:{gene.getBegin()}-{gene.getEnd()}"
-        chrN = gene.getSubstrate()
-        geneid = gene.getId()
-        length = gene.longestTranscript().getLength()
+    transcript = gene.longestTranscript()
+    transcript.exons = transcript.getRawExons()
+    transcript.recomputeBoundaries()
+    region_str = f"{gene.getSubstrate()}:{gene.getBegin()}-{gene.getEnd()}"
+    chrN = gene.getSubstrate()
+    geneid = gene.getId()
+    length = gene.longestTranscript().getLength()
 
-        numReads = int(float(DEPTH / readLen) * length)
-        
+    numReads = int(float(DEPTH / readLen) * length)
+    
 
-        if processed_genes > 0 and processed_genes % 100 == 0:
-            sec_per_gene = (time.perf_counter_ns() - start_time_ns) / processed_genes / 1e9
-            estimated_seconds_remaining = round((len(genes) - processed_genes) * sec_per_gene)
-            print(
-                f"{datetime.now()} ...  processed {processed_genes} / {len(genes)} genes ({round(100*processed_genes/len(genes),2)}%) genes_per_sec: {round(1/sec_per_gene, 2)} ETA: {timedelta(seconds=estimated_seconds_remaining)}",
-                file=sys.stderr,
-                flush=True,
-            )
-        processed_genes += 1
-
-        ###### filtering 1
-        if not region_str in region_str_to_sam_data:
-            # if if_print:
-            #     print(f"{chrN},gene: {geneid}, no mapped reads in SAM, skip")
-            not_in_sam += 1
-            continue
-        if not region_str in region_str_to_variants:
-            # if if_print:
-            #     print(f"{chrN},gene: {geneid}, no variants/records in VCF, skip")
-            in_sam_not_in_vcf += 1
-            continue
-
-        variants = region_str_to_variants[region_str]
-        sam_data = region_str_to_sam_data[region_str]
-        pos1_tlen = [x[0] for x in sam_data]
-        qual_strs = [x[1] for x in sam_data]
-        if len(qual_strs) == 0 or len(pos1_tlen) == 0:
-            continue
-
-        ###### filtering 2
-        # print(">>>>>>>>>>>>>>>> input pos1_tlen list")
-        # print(pos1_tlen)
-        pos1_tlen_to_count = {}
-        for x in pos1_tlen:
-            pos1_tlen_to_count[x] = pos1_tlen_to_count[x] + 1 if x in pos1_tlen_to_count else 1
-
-        # if len(pos1_tlen) > 999:
-        # print(f"{datetime.now()}\t{geneid}\ttranscripts: {gene.getNumTranscripts()}\treads: {len(pos1_tlen)}\tdeduped reads: {len(pos1_tlen_to_count)}\tunique_pos1: {len(set([x[0] for x in pos1_tlen]))}")
-        transcript_to_fragLen = posTlen_to_fragLen(gene, pos1_tlen_to_count, readLen)
-        # print(f"{' '.join([str(len(l)) for l in transcript_to_fragLen.values()])}")
-
-        if len(transcript_to_fragLen) == 0:
-            # print("empty fragLen list!")
-            continue
-        # print(">>>>>>>>>>>>>>>> output fragLen list")
-        # print(fragLen_list)
-        recorded_genes += 1
-        # if if_print:
-        #     print(
-        #         "%s,%s,#reads: %s,total #variants in VCF: %d"
-        #         % (region_str, geneid, numReads, len(variants))
-        #     )
-
-        maternal, transcriptIdToBiSNPpos, transcript_num = makeAltTranscript(
-            gene, 1, variants
+    if processed_genes > 0 and processed_genes % 100 == 0:
+        sec_per_gene = (time.perf_counter_ns() - start_time_ns) / processed_genes / 1e9
+        estimated_seconds_remaining = round((len(genes) - processed_genes) * sec_per_gene)
+        print(
+            f"{datetime.now()} ...  processed {processed_genes} / {len(genes)} genes ({round(100*processed_genes/len(genes),2)}%) genes_per_sec: {round(1/sec_per_gene, 2)} ETA: {timedelta(seconds=estimated_seconds_remaining)}",
+            file=sys.stderr,
+            flush=True,
         )
-        paternal, transcriptIdToBiSNPpos, _ = makeAltTranscript(gene, 0, variants)
-        qual_idx = 0
-        # pos_idx = 0
-        # counter = 0
-        # list_fragLen = []
+    processed_genes += 1
 
-        candidate_transcripts = list(transcript_to_fragLen.keys())
-        candidate_transcript_pairs = [
-            (x, next(filter(lambda y: y.getID() == x.getID(), maternal.transcripts))) for x in candidate_transcripts
-        ]
+    ###### filtering 1
+    if not region_str in region_str_to_sam_data:
+        # if if_print:
+        #     print(f"{chrN},gene: {geneid}, no mapped reads in SAM, skip")
+        not_in_sam += 1
+        continue
+    if not region_str in region_str_to_variants:
+        # if if_print:
+        #     print(f"{chrN},gene: {geneid}, no variants/records in VCF, skip")
+        in_sam_not_in_vcf += 1
+        continue
 
-        for i in range(numReads):
-            patTranscript, matTranscript = random.choice(candidate_transcript_pairs)
-            transcript_length = matTranscript.getLength()
-            # extract quality string from qual_strs in order
-            ##########
-            fwd_qual = qual_strs[qual_idx]
-            qual_idx = (qual_idx + 1) % len(qual_strs)
-            rev_qual = qual_strs[qual_idx]
-            qual_idx = (qual_idx + 1) % len(qual_strs)
-            max_qual_len = max(len(fwd_qual), len(rev_qual))
-            ##########
-            # print(
-            #    f">>>>>>>>>>>>>>>> {i}th reads - transcript length {transcript_length}"
-            # )
+    variants = region_str_to_variants[region_str]
+    sam_data = region_str_to_sam_data[region_str]
+    pos1_tlen = [x[0] for x in sam_data]
+    qual_strs = [x[1] for x in sam_data]
+    if len(qual_strs) == 0 or len(pos1_tlen) == 0:
+        continue
 
-            fragLen = random.choice(transcript_to_fragLen[patTranscript])
+    ###### filtering 2
+    # print(">>>>>>>>>>>>>>>> input pos1_tlen list")
+    # print(pos1_tlen)
+    pos1_tlen_to_count = {}
+    for x in pos1_tlen:
+        pos1_tlen_to_count[x] = pos1_tlen_to_count[x] + 1 if x in pos1_tlen_to_count else 1
 
-            # fragLen = pick_fragLen(fragLen_list, max_qual_len, transcript_length)
-            # pos_idx = (pos_idx + 1) % len(pos1_tlen)
+    # if len(pos1_tlen) > 999:
+    # print(f"{datetime.now()}\t{geneid}\ttranscripts: {gene.getNumTranscripts()}\treads: {len(pos1_tlen)}\tdeduped reads: {len(pos1_tlen_to_count)}\tunique_pos1: {len(set([x[0] for x in pos1_tlen]))}")
+    transcript_to_fragLen = posTlen_to_fragLen(gene, pos1_tlen_to_count, readLen)
+    # print(f"{' '.join([str(len(l)) for l in transcript_to_fragLen.values()])}")
 
-            if fragLen is None:
-                if if_debug:
-                    print(
-                        f">> {geneid} {i} th read skipped! coudl not find appropriate fraglen"
-                    )
-                n_break += 1
-                continue
+    if len(transcript_to_fragLen) == 0:
+        # print("empty fragLen list!")
+        continue
+    # print(">>>>>>>>>>>>>>>> output fragLen list")
+    # print(fragLen_list)
+    recorded_genes += 1
+    # if if_print:
+    #     print(
+    #         "%s,%s,#reads: %s,total #variants in VCF: %d"
+    #         % (region_str, geneid, numReads, len(variants))
+    #     )
 
-            # list_fragLen.append(fragLen)
-            # simulate reads for paternal and maternal copy
-            (
-                patSeq,
-                patSeq_rev,
-                matSeq,
-                matSeq_rev,
-                fwd_LEN,
-                rev_LEN,
-                start1,
-                end1,
-                start2,
-                end2,
-            ) = simRead_patmat(
-                patTranscript, matTranscript, fwd_qual, rev_qual, fragLen, readLen
-            )
-            # list_fragLen.append(fragLen)
-            # list_start1.append(start1)
-            # list_end1.append(end1)
-            # list_start2.append(start2)
-            # list_end2.append(end2)
-            if patSeq is None or matSeq is None:
-                n_break += 1
-                continue  # gene is shorter than fragment length
-            ################## random haplotype simulator: randomly generate a mat or pat copy
-            if if_random:
-                random_prob = random.random()
-                if_mat = False
-                if random_prob >= 0.5:
-                    if_mat = True
-                identifier_random = "@SIM-" + str(nextReadID) + "-" + str(geneid)
+    maternal, transcriptIdToBiSNPpos, transcript_num = makeAltTranscript(
+        gene, 1, variants
+    )
+    paternal, transcriptIdToBiSNPpos, _ = makeAltTranscript(gene, 0, variants)
+    qual_idx = 0
+    # pos_idx = 0
+    # counter = 0
+    # list_fragLen = []
+
+    candidate_transcripts = list(transcript_to_fragLen.keys())
+    candidate_transcript_pairs = [
+        (x, next(filter(lambda y: y.getID() == x.getID(), maternal.transcripts))) for x in candidate_transcripts
+    ]
+
+    for i in range(numReads):
+        patTranscript, matTranscript = random.choice(candidate_transcript_pairs)
+        transcript_length = matTranscript.getLength()
+        # extract quality string from qual_strs in order
+        ##########
+        fwd_qual = qual_strs[qual_idx]
+        qual_idx = (qual_idx + 1) % len(qual_strs)
+        rev_qual = qual_strs[qual_idx]
+        qual_idx = (qual_idx + 1) % len(qual_strs)
+        max_qual_len = max(len(fwd_qual), len(rev_qual))
+        ##########
+        # print(
+        #    f">>>>>>>>>>>>>>>> {i}th reads - transcript length {transcript_length}"
+        # )
+
+        fragLen = random.choice(transcript_to_fragLen[patTranscript])
+
+        # fragLen = pick_fragLen(fragLen_list, max_qual_len, transcript_length)
+        # pos_idx = (pos_idx + 1) % len(pos1_tlen)
+
+        if fragLen is None:
+            if if_debug:
+                print(
+                    f">> {geneid} {i} th read skipped! coudl not find appropriate fraglen"
+                )
+            n_break += 1
+            continue
+
+        # list_fragLen.append(fragLen)
+        # simulate reads for paternal and maternal copy
+        (
+            patSeq,
+            patSeq_rev,
+            matSeq,
+            matSeq_rev,
+            fwd_LEN,
+            rev_LEN,
+            start1,
+            end1,
+            start2,
+            end2,
+        ) = simRead_patmat(
+            patTranscript, matTranscript, fwd_qual, rev_qual, fragLen, readLen
+        )
+        # list_fragLen.append(fragLen)
+        # list_start1.append(start1)
+        # list_end1.append(end1)
+        # list_start2.append(start2)
+        # list_end2.append(end2)
+        if patSeq is None or matSeq is None:
+            n_break += 1
+            continue  # gene is shorter than fragment length
+        ################## random haplotype simulator: randomly generate a mat or pat copy
+        if if_random:
+            random_prob = random.random()
+            if_mat = False
+            if random_prob >= 0.5:
+                if_mat = True
+            identifier_random = "@SIM-" + str(nextReadID) + "-" + str(geneid)
+            # if if_print:
+            #     print(
+            #         "%s,if maternal: %s,rec1 quality string length %s, forward strand length %s, rec2 quality strand length %s, reverse strand length %s!! "
+            #         % (
+            #             identifier_random,
+            #             str(if_mat),
+            #             len(fwd_qual),
+            #             fwd_LEN,
+            #             len(rev_qual),
+            #             rev_LEN,
+            #         )
+            #     )
+            # random decision on maternal / paternal
+            if if_mat is True:
+                randomSeq = matSeq
+                randomSeq_rev = matSeq_rev
                 # if if_print:
                 #     print(
-                #         "%s,if maternal: %s,rec1 quality string length %s, forward strand length %s, rec2 quality strand length %s, reverse strand length %s!! "
-                #         % (
-                #             identifier_random,
-                #             str(if_mat),
-                #             len(fwd_qual),
-                #             fwd_LEN,
-                #             len(rev_qual),
-                #             rev_LEN,
-                #         )
+                #         "%s,if mat:%s,MAT FWD: %s"
+                #         % (identifier_random, str(if_mat), matSeq)
                 #     )
-                # random decision on maternal / paternal
-                if if_mat is True:
-                    randomSeq = matSeq
-                    randomSeq_rev = matSeq_rev
-                    # if if_print:
-                    #     print(
-                    #         "%s,if mat:%s,MAT FWD: %s"
-                    #         % (identifier_random, str(if_mat), matSeq)
-                    #     )
-                    #     print(
-                    #         "%s,if mat:%s,MAT REV: %s"
-                    #         % (identifier_random, str(if_mat), matSeq_rev)
-                    #     )
-                else:
-                    randomSeq = patSeq
-                    randomSeq_rev = patSeq_rev
-                    # if if_print:
-                    #     print(
-                    #         "%s,if mat:%s,PAT FWD: %s"
-                    #         % (identifier_random, str(if_mat), patSeq)
-                    #     )
-                    #     print(
-                    #         "%s,if mat:%s,PAT REV: %s"
-                    #         % (identifier_random, str(if_mat), patSeq_rev)
-                    #     )
-                # if if_print:
-                #     print("%s,qual FWD: %s" % (identifier_random, fwd_qual))
-                #     print("%s,qual REV: %s" % (identifier_random, rev_qual))
-                #     print("")
-                # write to file
-                printRead(
-                    str(identifier_random)
-                    + ":if_maternal"
-                    + str(if_mat)
-                    + ":FWD"
-                    + " /1",
-                    randomSeq,
-                    fwd_qual,
-                    OUT1,
-                )
-                nextReadID += 1
-                printRead(
-                    str(identifier_random)
-                    + ":if_maternal"
-                    + str(if_mat)
-                    + ":REV"
-                    + " /1",
-                    randomSeq_rev,
-                    rev_qual,
-                    OUT2,
-                )
-            ################## equal haplotype copy simulator: both mat and pat has same number of reads
+                #     print(
+                #         "%s,if mat:%s,MAT REV: %s"
+                #         % (identifier_random, str(if_mat), matSeq_rev)
+                #     )
             else:
-                identifier_PAT = "@SIM-" + str(nextReadID) + "-" + str(geneid)
-                identifier_MAT = "@SIM-" + str(nextReadID + 1) + "-" + str(geneid)
+                randomSeq = patSeq
+                randomSeq_rev = patSeq_rev
                 # if if_print:
                 #     print(
-                #         "REF: %s,ALT: %s,rec1 quality string length %s, forward strand length %s, rec2 quality strand length %s, reverse strand length %s!! "
-                #         % (
-                #             identifier_PAT,
-                #             identifier_MAT,
-                #             len(fwd_qual),
-                #             fwd_LEN,
-                #             len(rev_qual),
-                #             rev_LEN,
-                #         )
+                #         "%s,if mat:%s,PAT FWD: %s"
+                #         % (identifier_random, str(if_mat), patSeq)
                 #     )
-                #     print("%s,PAT FWD: %s" % (identifier_PAT, patSeq))
-                #     print("%s,MAT FWD: %s" % (identifier_MAT, matSeq))
-                #     print("%s,qual FWD: %s" % (identifier_PAT, fwd_qual))
-                #     print("%s,PAT REV: %s" % (identifier_PAT, patSeq_rev))
-                #     print("%s,MAT REV: %s" % (identifier_MAT, matSeq_rev))
-                #     print("%s,qual REV: %s" % (identifier_MAT, rev_qual))
-                #     print("")
-                # write to file
-                printRead(
-                    identifier_PAT + ":PAT:FWD" + " /1",
-                    patSeq,
-                    fwd_qual,
-                    OUT1,
-                )
-                printRead(
-                    identifier_PAT + ":PAT:REV" + " /2",
-                    patSeq_rev,
-                    rev_qual,
-                    OUT2,
-                )
-                nextReadID += 1
-                printRead(
-                    identifier_MAT + ":MAT:FWD" + " /1",
-                    matSeq,
-                    fwd_qual,
-                    OUT1,
-                )
-                printRead(
-                    identifier_MAT + ":MAT:REV" + " /2",
-                    matSeq_rev,
-                    rev_qual,
-                    OUT2,
-                )
+                #     print(
+                #         "%s,if mat:%s,PAT REV: %s"
+                #         % (identifier_random, str(if_mat), patSeq_rev)
+                #     )
+            # if if_print:
+            #     print("%s,qual FWD: %s" % (identifier_random, fwd_qual))
+            #     print("%s,qual REV: %s" % (identifier_random, rev_qual))
+            #     print("")
+            # write to file
+            printRead(
+                str(identifier_random)
+                + ":if_maternal"
+                + str(if_mat)
+                + ":FWD"
+                + " /1",
+                randomSeq,
+                fwd_qual,
+                OUT1,
+            )
             nextReadID += 1
+            printRead(
+                str(identifier_random)
+                + ":if_maternal"
+                + str(if_mat)
+                + ":REV"
+                + " /1",
+                randomSeq_rev,
+                rev_qual,
+                OUT2,
+            )
+        ################## equal haplotype copy simulator: both mat and pat has same number of reads
+        else:
+            identifier_PAT = "@SIM-" + str(nextReadID) + "-" + str(geneid)
+            identifier_MAT = "@SIM-" + str(nextReadID + 1) + "-" + str(geneid)
+            # if if_print:
+            #     print(
+            #         "REF: %s,ALT: %s,rec1 quality string length %s, forward strand length %s, rec2 quality strand length %s, reverse strand length %s!! "
+            #         % (
+            #             identifier_PAT,
+            #             identifier_MAT,
+            #             len(fwd_qual),
+            #             fwd_LEN,
+            #             len(rev_qual),
+            #             rev_LEN,
+            #         )
+            #     )
+            #     print("%s,PAT FWD: %s" % (identifier_PAT, patSeq))
+            #     print("%s,MAT FWD: %s" % (identifier_MAT, matSeq))
+            #     print("%s,qual FWD: %s" % (identifier_PAT, fwd_qual))
+            #     print("%s,PAT REV: %s" % (identifier_PAT, patSeq_rev))
+            #     print("%s,MAT REV: %s" % (identifier_MAT, matSeq_rev))
+            #     print("%s,qual REV: %s" % (identifier_MAT, rev_qual))
+            #     print("")
+            # write to file
+            printRead(
+                identifier_PAT + ":PAT:FWD" + " /1",
+                patSeq,
+                fwd_qual,
+                OUT1,
+            )
+            printRead(
+                identifier_PAT + ":PAT:REV" + " /2",
+                patSeq_rev,
+                rev_qual,
+                OUT2,
+            )
+            nextReadID += 1
+            printRead(
+                identifier_MAT + ":MAT:FWD" + " /1",
+                matSeq,
+                fwd_qual,
+                OUT1,
+            )
+            printRead(
+                identifier_MAT + ":MAT:REV" + " /2",
+                matSeq_rev,
+                rev_qual,
+                OUT2,
+            )
+        nextReadID += 1
         # if processed_genes <= 10:
         #     out = out_path + "/start_end_pos" + "/" + str(geneid)
         #     Path(out).mkdir(parents=True, exist_ok=True)
