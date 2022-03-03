@@ -228,29 +228,43 @@ def print_verbose(s):
         print(s)
 
 
-def posTlen_to_fragLen(gene, pos1_tlen_list, readLen):
-    fragLen_list = []
-    transcript_len = []
-    for pos1, tlen in pos1_tlen_list:
-        # print(f">>> {pos1}-{tlen}:")
-        n = gene.getNumTranscripts()
-        for i in range(n):
-            selected_transcript = gene.getIthTranscript(i)
-            begin = selected_transcript.mapToTranscript(pos1)
-            end = selected_transcript.mapToTranscript(pos1 + tlen)
-            candidateFragLen = abs(end - begin)
-            transcript_len.append(selected_transcript.getLength())
-            if begin >= 0 and end >= 0 and candidateFragLen >= readLen:
-                fragLen_list.append(candidateFragLen)
-                # print(f"   {i}th transcript - {candidateFragLen}")
-            # else:
-            #     print(
-            #         f"    skipped --> {i}th transcript - {candidateFragLen} = {end} - {begin}"
-            #     )
-    if len(fragLen_list) > 0:
-        if min(fragLen_list) > max(transcript_len):
-            fragLen_list = []
-    return fragLen_list
+def posTlen_to_fragLen(gene, pos1_tlen_to_count, readLen):
+
+    transcript_to_mapped_lengths = {}
+
+    for i in range(gene.getNumTranscripts()):
+        transcript = gene.getIthTranscript(i)
+        mapped_lengths = []
+
+        pos_cache = {}
+        def mapPos(pos):
+            nonlocal transcript
+            nonlocal pos_cache
+            if pos not in pos_cache:
+                pos_cache[pos] = transcript.mapToTranscript(pos)
+            return pos_cache[pos]
+            
+        for pos1_tlen, count in pos1_tlen_to_count.items():
+            pos1, tlen = pos1_tlen
+
+            begin = mapPos(pos1)
+            if begin < 0:
+                continue
+            end = mapPos(pos1 + tlen)
+            if end < 0:
+                continue
+
+            mapped_length = abs(end - begin)
+            if mapped_length < readLen:
+                continue
+
+            mapped_lengths.extend([mapped_length for i in range(count)])
+
+        if len(mapped_lengths) > 0:
+            transcript_to_mapped_lengths[transcript] = mapped_lengths
+
+    return transcript_to_mapped_lengths
+
 
 
 def pick_fragLen(fragLens, max_qual_len, transcript_length):
@@ -301,19 +315,6 @@ def pick_fragLen_X(
             return fragLen, pos_idx
         if pos_idx == initial_pos_idx:
             return fragLen, pos_idx
-
-
-def pick_random_Transcript(refGene, altGene, transcriptIdToBiSNPcount):
-    n = refGene.getNumTranscripts()
-    i = random.randrange(n)
-    num = transcriptIdToBiSNPcount[refGene.getIthTranscript(i).getID()]
-    return (
-        refGene.getIthTranscript(i),
-        altGene.getIthTranscript(i),
-        i,
-        refGene.getIthTranscript(i).getID(),
-        num,
-    )
 
 
 def twoBitID(chr, begin, end):
