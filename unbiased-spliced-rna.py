@@ -3,9 +3,11 @@
 # This version is written by Scarlett
 # =========================================================================
 
+from concurrent.futures import process
 from curses.ascii import FF
 from distutils.debug import DEBUG
 import string
+import time
 
 # from doctest import
 from xmlrpc.client import boolean
@@ -13,18 +15,15 @@ from xxlimited import Xxo
 import argparse
 from helper import (
     posTlen_to_fragLen,
-    pick_fragLen,
+    sam_data_processor,
     tabix_regions,
     variant_processor,
-    quality_string_processor,
-    read_length_processor,
     simRead_patmat,
     run2bitBatch,
     constructTwoBitInput,
     annotate_transcripts,
     chunk_iter,
     printRead,  #
-    pick_random_Transcript,
 )
 import helper
 import importlib
@@ -44,7 +43,7 @@ from misc_tools.ConfigFile import ConfigFile
 from misc_tools.Rex import Rex
 from Bio.Seq import Seq
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 from collections import defaultdict
 from misc_tools.Translation import Translation
 
@@ -183,7 +182,7 @@ parser.add_argument("samgz", help="full path to sam.gz")
 parser.add_argument("vcf", help="full path to VCF file with chr")
 parser.add_argument("readLen", help="original read length from reads")
 parser.add_argument("out_path", help="output path")
-parser.add_argument("read_depth", help="per-base-read-depth")
+parser.add_argument("read_depth", help="per-base-read-depth", type=int)
 parser.add_argument(
     "--out1",
     help="output name for forward strand fastq reads, default: read1.fastq.gz",
@@ -195,6 +194,7 @@ parser.add_argument(
     default="read2.fastq.gz",
 )
 parser.add_argument("--chr", help="specific chromosome to simulate")
+parser.add_argument("--gene", help="specific gene to simulate")
 parser.add_argument(
     "-r",
     "--random",
@@ -217,7 +217,8 @@ vcfFile = args.vcf
 readLen = int(args.readLen)
 out_path = args.out_path
 chromosome = args.chr
-DEPTH = int(args.read_depth)
+target_gene = args.gene
+DEPTH = args.read_depth
 outFile1 = args.out1
 outFile2 = args.out2
 if_random = args.random
@@ -273,6 +274,13 @@ print(f"{datetime.now()} done reading GFF...", file=sys.stderr, flush=True)
 if chromosome is not None:
     print(f"Looking at specific chromosome: {chromosome}")
     genes = list(filter(lambda x: x.getSubstrate() == chromosome, genes))
+if target_gene is not None:
+    print(f"looking at specific gene {target_gene}")
+    genes = list(filter(lambda x: x.getId() == target_gene, genes))
+
+if len(genes) == 0:
+    print(f"No genes to process.  Exiting.")
+    sys.exit()
 
 #    out_path = out_path + "/" + chromosome
 # else:
@@ -353,20 +361,12 @@ region_str_to_variants = tabix_regions(
     regions, variant_processor, vcfFile, comment_char="#"
 )
 
-####### extract quality string score
+####### extract sam data
 # dict3: gene_to_qualityStr {gene region}:{quality string score from sam.gz}
 #######
-region_str_to_quality_strings = tabix_regions(
-    regions, quality_string_processor, samFile, comment_char="@"
+region_str_to_sam_data = tabix_regions(
+    regions, sam_data_processor, samFile, comment_char="@"
 )
-# print(region_str_to_quality_strings)
-####### extract fragment length
-# dict4: gene_to_fragLen {gene region}:{quality string score from sam.gz}
-#######
-region_str_to_posLen = tabix_regions(
-    regions, read_length_processor, samFile, comment_char="@"
-)
-# print(region_str_to_fragLen)
 
 #######
 # for each gene, generate reads using quality string from matching genes in SAM.GZ
@@ -380,6 +380,7 @@ processed_genes = 0
 recorded_genes = 0
 not_in_sam = 0
 in_sam_not_in_vcf = 0
+start_time_ns = time.perf_counter_ns()
 # list_fragLen = []
 for gene in genes:
     # list_start1 = []
@@ -396,10 +397,20 @@ for gene in genes:
         length = gene.longestTranscript().getLength()
 
         numReads = int(float(DEPTH / readLen) * length)
+        
+
+        if processed_genes > 0 and processed_genes % 100 == 0:
+            sec_per_gene = (time.perf_counter_ns() - start_time_ns) / processed_genes / 1e9
+            estimated_seconds_remaining = round((len(genes) - processed_genes) * sec_per_gene)
+            print(
+                f"{datetime.now()} ...  processed {processed_genes} / {len(genes)} genes ({round(100*processed_genes/len(genes),2)}%) genes_per_sec: {round(1/sec_per_gene, 2)} ETA: {timedelta(seconds=estimated_seconds_remaining)}",
+                file=sys.stderr,
+                flush=True,
+            )
         processed_genes += 1
 
         ###### filtering 1
-        if not region_str in region_str_to_quality_strings:
+        if not region_str in region_str_to_sam_data:
             # if if_print:
             #     print(f"{chrN},gene: {geneid}, no mapped reads in SAM, skip")
             not_in_sam += 1
@@ -409,22 +420,27 @@ for gene in genes:
             #     print(f"{chrN},gene: {geneid}, no variants/records in VCF, skip")
             in_sam_not_in_vcf += 1
             continue
-        if not region_str in region_str_to_posLen:
-            # if if_print:
-            #     print(f"{chrN},gene: {geneid}, no fragment length in SAM, skip")
-            continue
 
         variants = region_str_to_variants[region_str]
-        qual_strs = region_str_to_quality_strings[region_str]
-        pos1_tlen = region_str_to_posLen[region_str]
+        sam_data = region_str_to_sam_data[region_str]
+        pos1_tlen = [x[0] for x in sam_data]
+        qual_strs = [x[1] for x in sam_data]
         if len(qual_strs) == 0 or len(pos1_tlen) == 0:
             continue
 
         ###### filtering 2
         # print(">>>>>>>>>>>>>>>> input pos1_tlen list")
         # print(pos1_tlen)
-        fragLen_list = posTlen_to_fragLen(gene, pos1_tlen, readLen)
-        if len(fragLen_list) == 0:
+        pos1_tlen_to_count = {}
+        for x in pos1_tlen:
+            pos1_tlen_to_count[x] = pos1_tlen_to_count[x] + 1 if x in pos1_tlen_to_count else 1
+
+        # if len(pos1_tlen) > 999:
+        # print(f"{datetime.now()}\t{geneid}\ttranscripts: {gene.getNumTranscripts()}\treads: {len(pos1_tlen)}\tdeduped reads: {len(pos1_tlen_to_count)}\tunique_pos1: {len(set([x[0] for x in pos1_tlen]))}")
+        transcript_to_fragLen = posTlen_to_fragLen(gene, pos1_tlen_to_count, readLen)
+        # print(f"{' '.join([str(len(l)) for l in transcript_to_fragLen.values()])}")
+
+        if len(transcript_to_fragLen) == 0:
             # print("empty fragLen list!")
             continue
         # print(">>>>>>>>>>>>>>>> output fragLen list")
@@ -445,14 +461,13 @@ for gene in genes:
         # counter = 0
         # list_fragLen = []
 
+        candidate_transcripts = list(transcript_to_fragLen.keys())
+        candidate_transcript_pairs = [
+            (x, next(filter(lambda y: y.getID() == x.getID(), maternal.transcripts))) for x in candidate_transcripts
+        ]
+
         for i in range(numReads):
-            (
-                matTranscript,
-                patTranscript,
-                th_transcript,
-                transcriptID,
-                bivariant,
-            ) = pick_random_Transcript(maternal, paternal, transcriptIdToBiSNPpos)
+            patTranscript, matTranscript = random.choice(candidate_transcript_pairs)
             transcript_length = matTranscript.getLength()
             # extract quality string from qual_strs in order
             ##########
@@ -466,7 +481,9 @@ for gene in genes:
             #    f">>>>>>>>>>>>>>>> {i}th reads - transcript length {transcript_length}"
             # )
 
-            fragLen = pick_fragLen(fragLen_list, max_qual_len, transcript_length)
+            fragLen = random.choice(transcript_to_fragLen[patTranscript])
+
+            # fragLen = pick_fragLen(fragLen_list, max_qual_len, transcript_length)
             # pos_idx = (pos_idx + 1) % len(pos1_tlen)
 
             if fragLen is None:
@@ -633,12 +650,6 @@ for gene in genes:
         #     with open(ovi testut + "/end2", "wb") as fp:
         #         pickle.dump(list_end2, fp)
 
-        if processed_genes % 500 == 0:
-            print(
-                f"{datetime.now()} ... processed {processed_genes} / {len(genes)} genes : {round(100*processed_genes/len(genes),2)} %",
-                file=sys.stderr,
-                flush=True,
-            )
 # Path(out_path + "/fragLen").mkdir(parents=True, exist_ok=True)
 # with open(out_path + "/fragLen.txt", "wb") as fp:
 #     pickle.dump(list_fragLen, fp)
