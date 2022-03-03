@@ -236,7 +236,6 @@ if_print = args.verbose
 # out_path = configFile.lookupOrDie("out_path")
 
 if_debug = False
-if_print = str(if_print) == "True"
 if if_print:
     print(
         f"{datetime.now()} Yes, print out simulation logs...",
@@ -250,7 +249,6 @@ else:
         flush=True,
     )
 
-if_random = str(if_random) == "True"
 if if_random:
     print(
         f"{datetime.now()} generate RANDOM pat/mat reads...",
