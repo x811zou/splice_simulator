@@ -278,9 +278,17 @@ if if_print:
 gffReader = GffTranscriptReader()
 print(f"{datetime.now()} reading GFF...", file=sys.stderr, flush=True)
 
+gffFilterRegex = ""
 if chromosome is not None:
+    gffFilterRegex = f"^{chromosome}\s"
+if target_gene is not None:
+    gffFilterRegex += f".*{target_gene}"
+
+if len(gffFilterRegex) > 0:
+    if if_print:
+        print(f"Filtering gffFile with {gffFilterRegex}")
     with tempfile.NamedTemporaryFile(mode='w') as filteredGffFile, (gzip.open(gffFile, 'rt') if gffFile.endswith('.gz') else open(gffFile, 'r')) as inputGff:
-        regex=re.compile(f"^{chromosome}\s")
+        regex=re.compile(gffFilterRegex)
         for line in inputGff:
             if regex.match(line):
                 filteredGffFile.write(line)
