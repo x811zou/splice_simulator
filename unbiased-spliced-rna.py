@@ -6,7 +6,9 @@
 from concurrent.futures import process
 from curses.ascii import FF
 from distutils.debug import DEBUG
+import re
 import string
+import tempfile
 import time
 
 # from doctest import
@@ -275,7 +277,19 @@ if if_print:
 # Load GFF and fragment lengths
 gffReader = GffTranscriptReader()
 print(f"{datetime.now()} reading GFF...", file=sys.stderr, flush=True)
-genes = gffReader.loadGenes(gffFile)
+
+if chromosome is not None:
+    with tempfile.NamedTemporaryFile(mode='w') as filteredGffFile, (gzip.open(gffFile, 'rt') if gffFile.endswith('.gz') else open(gffFile, 'r')) as inputGff:
+        regex=re.compile(f"^{chromosome}\s")
+        for line in inputGff:
+            if regex.match(line):
+                filteredGffFile.write(line)
+        filteredGffFile.flush()
+            
+        genes = gffReader.loadGenes(filteredGffFile.name)
+else:
+    genes = gffReader.loadGenes(gffFile)
+
 genes.sort(key=lambda gene: (gene.getSubstrate(), gene.getBegin()))
 print(f"{datetime.now()} done reading GFF...", file=sys.stderr, flush=True)
 
