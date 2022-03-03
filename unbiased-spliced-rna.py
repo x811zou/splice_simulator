@@ -193,6 +193,11 @@ parser.add_argument(
     help="output name for reverse strand fastq reads, default: read2.fastq.gz",
     default="read2.fastq.gz",
 )
+parser.add_argument(
+    '--out-prefix',
+    help="prefix applied to output file names",
+    default=""
+)
 parser.add_argument("--chr", help="specific chromosome to simulate")
 parser.add_argument("--gene", help="specific gene to simulate")
 parser.add_argument(
@@ -207,8 +212,8 @@ if args.chr:
     print(f"single chromosome mode turned on : {args.chr}")
 if args.verbose:
     print("printing mode turned on")
+    print(args)
 
-print(args)
 twoBitDir = args.twobit
 genome2bit = args.genome
 gffFile = args.gff
@@ -221,6 +226,7 @@ target_gene = args.gene
 DEPTH = args.read_depth
 outFile1 = args.out1
 outFile2 = args.out2
+outPrefix = args.out_prefix
 if_random = args.random
 if_print = args.verbose
 # configFile = args.config_file
@@ -259,6 +265,11 @@ else:
     print(
         f"{datetime.now()} generate EQUAL pat/mat reads...", file=sys.stderr, flush=True
     )
+
+outFile1 = outPrefix + outFile1
+outFile2 = outPrefix + outFile2
+if if_print:
+    print(f"output file names {outFile1} {outFile2}")
 
 
 # Load GFF and fragment lengths
