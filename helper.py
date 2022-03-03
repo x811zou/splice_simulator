@@ -41,6 +41,7 @@ import random
 import copy
 import gzip
 import os
+import tempfile
 from misc_tools.GffTranscriptReader import GffTranscriptReader
 from misc_tools.Pipe import Pipe
 from misc_tools.ConfigFile import ConfigFile
@@ -80,47 +81,46 @@ def printRead(header, seq, qual, FH):
 
 
 def tabix_regions(regions, line_processor, target_file_path=None, comment_char="#"):
-    CHUNK_SIZE = 1000
-    regions_processed = 0
     region_to_results = {}
 
     print(
         f"{datetime.now()} Start tabix extraction of {len(regions)} regions from file {target_file_path}"
     )
 
-    for x in chunk_iter(iter(regions), CHUNK_SIZE):
-        """
-        x stands for gene level chr: start-end
-        look up 1000 genes at a time
-        """
-        region_batch = " ".join(x)
-        cmd = f"tabix --separate-regions {target_file_path} {region_batch}"
-        output = Pipe.run(cmd)
-        if len(output) == 0:
+    if len(regions) > 1000:
+        with tempfile.NamedTemporaryFile(mode='w') as file:
+            for region in regions:
+                chr, rest = region.split(':')
+                start, end = rest.split('-')
+                file.write(f"{chr}\t{start}\t{end}\n")
+            file.flush()
+            command = f"tabix --separate-regions {target_file_path} --regions {file.name}"
+            output = Pipe.run(command)
+    else:
+        region_batch = " ".join(regions)
+        command = f"tabix --separate-regions {target_file_path} {region_batch}"
+        output = Pipe.run(command)
+
+    if len(output) == 0:
+        return region_to_results
+
+    lines = output.split("\n")
+    records = []
+    for line in lines:
+        if len(line) == 0:
+            continue
+        # start accumulating new region
+        if line.startswith(comment_char):
+            region_str = line[1:]
+            records = []
+            region_to_results[region_str] = records
             continue
 
-        lines = output.split("\n")
-        records = []
-        for line in lines:
-            if len(line) == 0:
-                continue
-            # start accumulating new region
-            if line.startswith(comment_char):
-                region_str = line[1:]
-                records = []
-                region_to_results[region_str] = records
-                continue
+        result = line_processor(line)
+        if result is not None:
+            records.append(result)
 
-            result = line_processor(line)
-            if result is not None:
-                records.append(result)
-
-        regions_processed += len(x)
-        print(
-            f"{datetime.now()} ... finished {regions_processed} / {len(regions)} regions"
-        )
-
-    print(f"{datetime.now()} Got {len(region_to_results)} regions with data")
+    print(f"{datetime.now()} Got {len(region_to_results)} / {len(regions)} regions with data")
 
     return region_to_results
 
