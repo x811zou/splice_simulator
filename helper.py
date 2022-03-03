@@ -143,44 +143,27 @@ def variant_processor(line):
         return None
     return variant
 
-
-def quality_string_processor(line):
+def sam_data_processor(line):
     #########
-    # this function is used to fetch quality score from .sam.gz
+    # this function is used to fetch data from .sam.gz
+    # returns ( (start_pos, template_len), quality_string )
     # reference: https://samtools.github.io/hts-specs/SAMv1.pdf
+    # fields[3]: start POS
     # fields[8]: template length
     # fields[10]: quality string
     #########
     fields = line.rstrip().split()
-
-    # skip reads with 0 length
-    if int(fields[8]) == 0:
-        return None
-    # skip reads without quality string
     if len(fields) < 11:
         return None
 
-    quality_string = fields[10]
-    return quality_string
-
-
-def read_length_processor(line):
-    #########
-    # this function is used to fetch read start pos and template length from .sam.gz
-    # fields[3]: start POS
-    # fields[8]: template length
-    #########
-    fields = line.rstrip().split()
-    # skip reads whose template length <= 0
-    # ['ERR188166.25392658', '147', 'chr6', '8558820', '255', '57M95982N18M', '=', '8436351', '-218526', 'GATGTCATTGAACTCTTAAGTGCAAGATGAAACAAGTCTTTCTGGGGTTCTAAGTAGAAGTGATCTACCTTTCTA', 'IJIIJJGHCDGHHGGF@BGHEHBCEFEHECGHHGGGGDEDHEEGEHHCHEHGHBAHEHGIHHH?FHHDDFFDC@@', 'MD:Z:75', 'PG:Z:MarkDuplicates', 'NH:i:1', 'HI:i:1', 'jI:B:i,8558877,8654858', 'NM:i:0', 'jM:B:c,0', 'nM:i:0', 'AS:i:140', 'XS:A:+']
-    # print(fields)
     pos1 = int(fields[3])
     tlen = int(fields[8])
-    # skip duplicated ones
+    quality_string = fields[10]
+
     if tlen <= 0:
         return None
-    result = tuple((pos1, abs(tlen)))
-    # print(result)
+
+    result = ((pos1, tlen), quality_string)
     return result
 
 

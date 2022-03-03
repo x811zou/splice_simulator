@@ -14,10 +14,9 @@ import argparse
 from helper import (
     posTlen_to_fragLen,
     pick_fragLen,
+    sam_data_processor,
     tabix_regions,
     variant_processor,
-    quality_string_processor,
-    read_length_processor,
     simRead_patmat,
     run2bitBatch,
     constructTwoBitInput,
@@ -353,20 +352,12 @@ region_str_to_variants = tabix_regions(
     regions, variant_processor, vcfFile, comment_char="#"
 )
 
-####### extract quality string score
+####### extract sam data
 # dict3: gene_to_qualityStr {gene region}:{quality string score from sam.gz}
 #######
-region_str_to_quality_strings = tabix_regions(
-    regions, quality_string_processor, samFile, comment_char="@"
+region_str_to_sam_data = tabix_regions(
+    regions, sam_data_processor, samFile, comment_char="@"
 )
-# print(region_str_to_quality_strings)
-####### extract fragment length
-# dict4: gene_to_fragLen {gene region}:{quality string score from sam.gz}
-#######
-region_str_to_posLen = tabix_regions(
-    regions, read_length_processor, samFile, comment_char="@"
-)
-# print(region_str_to_fragLen)
 
 #######
 # for each gene, generate reads using quality string from matching genes in SAM.GZ
@@ -399,7 +390,7 @@ for gene in genes:
         processed_genes += 1
 
         ###### filtering 1
-        if not region_str in region_str_to_quality_strings:
+        if not region_str in region_str_to_sam_data:
             # if if_print:
             #     print(f"{chrN},gene: {geneid}, no mapped reads in SAM, skip")
             not_in_sam += 1
@@ -409,14 +400,11 @@ for gene in genes:
             #     print(f"{chrN},gene: {geneid}, no variants/records in VCF, skip")
             in_sam_not_in_vcf += 1
             continue
-        if not region_str in region_str_to_posLen:
-            # if if_print:
-            #     print(f"{chrN},gene: {geneid}, no fragment length in SAM, skip")
-            continue
 
         variants = region_str_to_variants[region_str]
-        qual_strs = region_str_to_quality_strings[region_str]
-        pos1_tlen = region_str_to_posLen[region_str]
+        sam_data = region_str_to_sam_data[region_str]
+        pos1_tlen = [x[0] for x in sam_data]
+        qual_strs = [x[1] for x in sam_data]
         if len(qual_strs) == 0 or len(pos1_tlen) == 0:
             continue
 
