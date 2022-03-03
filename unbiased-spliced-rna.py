@@ -182,7 +182,7 @@ parser.add_argument("samgz", help="full path to sam.gz")
 parser.add_argument("vcf", help="full path to VCF file with chr")
 parser.add_argument("readLen", help="original read length from reads")
 parser.add_argument("out_path", help="output path")
-parser.add_argument("read_depth", help="per-base-read-depth")
+parser.add_argument("read_depth", help="per-base-read-depth", type=int)
 parser.add_argument(
     "--out1",
     help="output name for forward strand fastq reads, default: read1.fastq.gz",
@@ -194,6 +194,7 @@ parser.add_argument(
     default="read2.fastq.gz",
 )
 parser.add_argument("--chr", help="specific chromosome to simulate")
+parser.add_argument("--gene", help="specific gene to simulate")
 parser.add_argument(
     "-r",
     "--random",
@@ -216,7 +217,8 @@ vcfFile = args.vcf
 readLen = int(args.readLen)
 out_path = args.out_path
 chromosome = args.chr
-DEPTH = int(args.read_depth)
+target_gene = args.gene
+DEPTH = args.read_depth
 outFile1 = args.out1
 outFile2 = args.out2
 if_random = args.random
@@ -272,6 +274,13 @@ print(f"{datetime.now()} done reading GFF...", file=sys.stderr, flush=True)
 if chromosome is not None:
     print(f"Looking at specific chromosome: {chromosome}")
     genes = list(filter(lambda x: x.getSubstrate() == chromosome, genes))
+if target_gene is not None:
+    print(f"looking at specific gene {target_gene}")
+    genes = list(filter(lambda x: x.getId() == target_gene, genes))
+
+if len(genes) == 0:
+    print(f"No genes to process.  Exiting.")
+    sys.exit()
 
 #    out_path = out_path + "/" + chromosome
 # else:
