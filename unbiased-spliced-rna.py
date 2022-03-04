@@ -182,7 +182,7 @@ parser.add_argument("genome", help="full path to hg19.2bit")
 parser.add_argument("gff", help="full path to gencode gtf file")
 parser.add_argument("samgz", help="full path to sam.gz")
 parser.add_argument("vcf", help="full path to VCF file with chr")
-parser.add_argument("readLen", help="original read length from reads")
+# parser.add_argument("readLen", help="original read length from reads")
 parser.add_argument("out_path", help="output path")
 parser.add_argument("read_depth", help="per-base-read-depth", type=int)
 parser.add_argument(
@@ -219,7 +219,6 @@ genome2bit = args.genome
 gffFile = args.gff
 samFile = args.samgz
 vcfFile = args.vcf
-readLen = int(args.readLen)
 out_path = args.out_path
 chromosome = args.chr
 target_gene = args.gene
@@ -426,8 +425,6 @@ for gene in genes:
     geneid = gene.getId()
     length = gene.longestTranscript().getLength()
 
-    numReads = int(float(DEPTH / readLen) * length)
-
     if processed_genes > 0 and processed_genes % 100 == 0:
         sec_per_gene = (time.perf_counter_ns() - start_time_ns) / processed_genes / 1e9
         estimated_seconds_remaining = round(
@@ -468,9 +465,12 @@ for gene in genes:
             pos1_tlen_to_count[x] + 1 if x in pos1_tlen_to_count else 1
         )
 
+    minQualLen = min([len(x) for x in qual_strs])
+
     # if len(pos1_tlen) > 999:
     # print(f"{datetime.now()}\t{geneid}\ttranscripts: {gene.getNumTranscripts()}\treads: {len(pos1_tlen)}\tdeduped reads: {len(pos1_tlen_to_count)}\tunique_pos1: {len(set([x[0] for x in pos1_tlen]))}")
-    transcript_to_fragLen = posTlen_to_fragLen(gene, pos1_tlen_to_count, readLen)
+    transcript_to_fragLen = posTlen_to_fragLen(gene, pos1_tlen_to_count, minQualLen)
+    # concat values for real fragLen
     # print(f"{' '.join([str(len(l)) for l in transcript_to_fragLen.values()])}")
 
     if len(transcript_to_fragLen) == 0:
@@ -492,7 +492,7 @@ for gene in genes:
     qual_idx = 0
     # pos_idx = 0
     # counter = 0
-    # list_fragLen = []
+    list_fragLen = []
 
     candidate_transcripts = list(transcript_to_fragLen.keys())
     candidate_transcript_pairs = [
@@ -500,35 +500,24 @@ for gene in genes:
         for x in candidate_transcripts
     ]
 
+    numReads = int(float(DEPTH / minQualLen) * length)
     for i in range(numReads):
         patTranscript, matTranscript = random.choice(candidate_transcript_pairs)
         transcript_length = matTranscript.getLength()
-        # extract quality string from qual_strs in order
-        ##########
-        fwd_qual = qual_strs[qual_idx]
-        qual_idx = (qual_idx + 1) % len(qual_strs)
-        rev_qual = qual_strs[qual_idx]
-        qual_idx = (qual_idx + 1) % len(qual_strs)
-        max_qual_len = max(len(fwd_qual), len(rev_qual))
-        ##########
-        if if_print:
-            print(
-                f">>>>>>>>>>>>> {geneid} {i}th reads - transcript length {transcript_length}"
-            )
-        fragLen = random.choice(transcript_to_fragLen[patTranscript])
 
-        # fragLen = pick_fragLen(fragLen_list, max_qual_len, transcript_length)
-        # pos_idx = (pos_idx + 1) % len(pos1_tlen)
+        frag_lens = transcript_to_fragLen[patTranscript]
+        min_frag_len = min(frag_lens)
 
-        if fragLen is None:
-            if if_print:
-                print(
-                    f">>>>>>>>>>>>> {geneid} {i} th read skipped! coudl not find appropriate fraglen"
-                )
-            n_break += 1
-            continue
+        assert min_frag_len <= transcript_length
+        fragLen = random.choice(frag_lens)
 
-        # list_fragLen.append(fragLen)
+        candidate_quals = list(filter(lambda x: len(x) <= fragLen, qual_strs))
+        assert len(candidate_quals) > 0
+
+        fwd_qual = random.choice(candidate_quals)
+        rev_qual = random.choice(candidate_quals)
+
+        list_fragLen.append(fragLen)
         # simulate reads for paternal and maternal copy
         (
             patSeq,
@@ -547,7 +536,6 @@ for gene in genes:
             fwd_qual,
             rev_qual,
             fragLen,
-            readLen,
             if_print=if_print,
         )
         # list_fragLen.append(fragLen)
@@ -682,9 +670,9 @@ for gene in genes:
         #     with open(ovi testut + "/end2", "wb") as fp:
         #         pickle.dump(list_end2, fp)
 
-# Path(out_path + "/fragLen").mkdir(parents=True, exist_ok=True)
-# with open(out_path + "/fragLen.txt", "wb") as fp:
-#     pickle.dump(list_fragLen, fp)
+Path(out_path + "/fragLen").mkdir(parents=True, exist_ok=True)
+with open(out_path + "/simulated_fragLen.txt", "wb") as fp:
+    pickle.dump(list_fragLen, fp)
 
 print(
     f"{datetime.now()} DONE",

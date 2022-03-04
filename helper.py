@@ -173,7 +173,7 @@ def sam_data_processor(line):
 
 
 def simRead_patmat(
-    refTranscript, altTranscript, qual1, qual2, fragLen, readLen, if_print=False
+    refTranscript, altTranscript, qual1, qual2, fragLen, if_print=False
 ):
     #####################################################################
     # transcript length
@@ -183,7 +183,7 @@ def simRead_patmat(
     L_start = 0
 
     # fragLen: actual read length drawn from SAM
-    if L_end < fragLen or L_end < readLen or L_end < len(qual1) or L_end < len(qual2):
+    if L_end < fragLen or L_end < len(qual1) or L_end < len(qual2):
         return (None, None, None, None, None, None)
     # transcript coord
     lastStart = min(L_end - fragLen, L_end - len(qual1), L_end - len(qual2))  # 20
@@ -195,7 +195,7 @@ def simRead_patmat(
     LEN2 = abs(end2 - start2)
     if if_print:
         print(
-            f"L{L} - Lstart:{L_start} - fragLen: {fragLen} - qual1: {len(qual1)} - qual2: {len(qual2)} -  start2:{start2}"
+            f"L{L} - start1:{start1} - fragLen: {fragLen} - qual1: {len(qual1)} - qual2: {len(qual2)} -  start2:{start2}"
         )
     assert start1 >= L_start
     assert end1 <= L_end
@@ -239,7 +239,6 @@ def print_verbose(s):
 
 
 def posTlen_to_fragLen(gene, pos1_tlen_to_count, readLen):
-
     transcript_to_mapped_lengths = {}
 
     for i in range(gene.getNumTranscripts()):
@@ -264,7 +263,6 @@ def posTlen_to_fragLen(gene, pos1_tlen_to_count, readLen):
             end = mapPos(pos1 + tlen)
             if end < 0:
                 continue
-
             mapped_length = abs(end - begin)
             if mapped_length < readLen:
                 continue
@@ -285,46 +283,6 @@ def pick_fragLen(fragLens, max_qual_len, transcript_length):
         if fragLen < transcript_length and fragLen >= max_qual_len:
             return fragLen
     return None
-
-
-def pick_fragLen_X(
-    th_read,
-    pos1_tlen_list,
-    pos_idx,
-    transcript,
-    readLen,
-    max_qual_len,
-    transcript_length,
-    if_debug=False,
-):
-    """
-    output:
-    fragLen
-    pos_idx: position index of the tuple chosen for this fragLen
-    """
-    fragLen = None
-    initial_pos_idx = pos_idx
-    while True:
-        pos1, tlen = pos1_tlen_list[pos_idx]
-        pos_idx = (pos_idx + 1) % len(pos1_tlen_list)
-        begin = transcript.mapToTranscript(pos1)
-        end = transcript.mapToTranscript(pos1 + tlen)
-        candidateFragLen = abs(end - begin)
-        if if_debug:
-            print(
-                f"{th_read} th read: pos idx:{pos_idx} - fragLen:{candidateFragLen} - pos1:{pos1} - tlen:{tlen} - begin:{begin} - end:{end}"
-            )
-        if (
-            begin >= 0
-            and end >= 0
-            and candidateFragLen >= readLen
-            and candidateFragLen < transcript_length
-            and candidateFragLen >= max_qual_len
-        ):
-            fragLen = candidateFragLen
-            return fragLen, pos_idx
-        if pos_idx == initial_pos_idx:
-            return fragLen, pos_idx
 
 
 def twoBitID(chr, begin, end):
