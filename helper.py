@@ -88,13 +88,15 @@ def tabix_regions(regions, line_processor, target_file_path=None, comment_char="
     )
 
     if len(regions) > 1000:
-        with tempfile.NamedTemporaryFile(mode='w') as file:
+        with tempfile.NamedTemporaryFile(mode="w") as file:
             for region in regions:
-                chr, rest = region.split(':')
-                start, end = rest.split('-')
+                chr, rest = region.split(":")
+                start, end = rest.split("-")
                 file.write(f"{chr}\t{start}\t{end}\n")
             file.flush()
-            command = f"tabix --separate-regions {target_file_path} --regions {file.name}"
+            command = (
+                f"tabix --separate-regions {target_file_path} --regions {file.name}"
+            )
             output = Pipe.run(command)
     else:
         region_batch = " ".join(regions)
@@ -120,7 +122,9 @@ def tabix_regions(regions, line_processor, target_file_path=None, comment_char="
         if result is not None:
             records.append(result)
 
-    print(f"{datetime.now()} Got {len(region_to_results)} / {len(regions)} regions with data")
+    print(
+        f"{datetime.now()} Got {len(region_to_results)} / {len(regions)} regions with data"
+    )
 
     return region_to_results
 
@@ -142,6 +146,7 @@ def variant_processor(line):
     if not (len(variant.ref) == 1 and len(variant.alt) == 1):
         return None
     return variant
+
 
 def sam_data_processor(line):
     #########
@@ -167,7 +172,9 @@ def sam_data_processor(line):
     return result
 
 
-def simRead_patmat(refTranscript, altTranscript, qual1, qual2, fragLen, readLen):
+def simRead_patmat(
+    refTranscript, altTranscript, qual1, qual2, fragLen, readLen, if_print=False
+):
     #####################################################################
     # transcript length
     L = len(refTranscript.sequence)
@@ -186,7 +193,10 @@ def simRead_patmat(refTranscript, altTranscript, qual1, qual2, fragLen, readLen)
     end2 = start1 + fragLen  # 10+80 = 90
     start2 = end2 - len(qual2)  # rec2.readLen  # 90-75 = 15
     LEN2 = abs(end2 - start2)
-    # print(f"L{L}-Lstart:{L_start} - start2:{start2}")
+    if if_print:
+        print(
+            f"L{L} - Lstart:{L_start} - fragLen: {fragLen} - qual1: {len(qual1)} - qual2: {len(qual2)} -  start2:{start2}"
+        )
     assert start1 >= L_start
     assert end1 <= L_end
     assert start2 >= L_start
@@ -237,13 +247,14 @@ def posTlen_to_fragLen(gene, pos1_tlen_to_count, readLen):
         mapped_lengths = []
 
         pos_cache = {}
+
         def mapPos(pos):
             nonlocal transcript
             nonlocal pos_cache
             if pos not in pos_cache:
                 pos_cache[pos] = transcript.mapToTranscript(pos)
             return pos_cache[pos]
-            
+
         for pos1_tlen, count in pos1_tlen_to_count.items():
             pos1, tlen = pos1_tlen
 
@@ -264,7 +275,6 @@ def posTlen_to_fragLen(gene, pos1_tlen_to_count, readLen):
             transcript_to_mapped_lengths[transcript] = mapped_lengths
 
     return transcript_to_mapped_lengths
-
 
 
 def pick_fragLen(fragLens, max_qual_len, transcript_length):

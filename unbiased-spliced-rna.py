@@ -196,9 +196,7 @@ parser.add_argument(
     default="read2.fastq.gz",
 )
 parser.add_argument(
-    '--out-prefix',
-    help="prefix applied to output file names",
-    default=""
+    "--out-prefix", help="prefix applied to output file names", default=""
 )
 parser.add_argument("--chr", help="specific chromosome to simulate")
 parser.add_argument("--gene", help="specific gene to simulate")
@@ -287,13 +285,15 @@ if target_gene is not None:
 if len(gffFilterRegex) > 0:
     if if_print:
         print(f"Filtering gffFile with {gffFilterRegex}")
-    with tempfile.NamedTemporaryFile(mode='w') as filteredGffFile, (gzip.open(gffFile, 'rt') if gffFile.endswith('.gz') else open(gffFile, 'r')) as inputGff:
-        regex=re.compile(gffFilterRegex)
+    with tempfile.NamedTemporaryFile(mode="w") as filteredGffFile, (
+        gzip.open(gffFile, "rt") if gffFile.endswith(".gz") else open(gffFile, "r")
+    ) as inputGff:
+        regex = re.compile(gffFilterRegex)
         for line in inputGff:
             if regex.match(line):
                 filteredGffFile.write(line)
         filteredGffFile.flush()
-            
+
         genes = gffReader.loadGenes(filteredGffFile.name)
 else:
     genes = gffReader.loadGenes(gffFile)
@@ -427,11 +427,12 @@ for gene in genes:
     length = gene.longestTranscript().getLength()
 
     numReads = int(float(DEPTH / readLen) * length)
-    
 
     if processed_genes > 0 and processed_genes % 100 == 0:
         sec_per_gene = (time.perf_counter_ns() - start_time_ns) / processed_genes / 1e9
-        estimated_seconds_remaining = round((len(genes) - processed_genes) * sec_per_gene)
+        estimated_seconds_remaining = round(
+            (len(genes) - processed_genes) * sec_per_gene
+        )
         print(
             f"{datetime.now()} ...  processed {processed_genes} / {len(genes)} genes ({round(100*processed_genes/len(genes),2)}%) genes_per_sec: {round(1/sec_per_gene, 2)} ETA: {timedelta(seconds=estimated_seconds_remaining)}",
             file=sys.stderr,
@@ -463,7 +464,9 @@ for gene in genes:
     # print(pos1_tlen)
     pos1_tlen_to_count = {}
     for x in pos1_tlen:
-        pos1_tlen_to_count[x] = pos1_tlen_to_count[x] + 1 if x in pos1_tlen_to_count else 1
+        pos1_tlen_to_count[x] = (
+            pos1_tlen_to_count[x] + 1 if x in pos1_tlen_to_count else 1
+        )
 
     # if len(pos1_tlen) > 999:
     # print(f"{datetime.now()}\t{geneid}\ttranscripts: {gene.getNumTranscripts()}\treads: {len(pos1_tlen)}\tdeduped reads: {len(pos1_tlen_to_count)}\tunique_pos1: {len(set([x[0] for x in pos1_tlen]))}")
@@ -493,7 +496,8 @@ for gene in genes:
 
     candidate_transcripts = list(transcript_to_fragLen.keys())
     candidate_transcript_pairs = [
-        (x, next(filter(lambda y: y.getID() == x.getID(), maternal.transcripts))) for x in candidate_transcripts
+        (x, next(filter(lambda y: y.getID() == x.getID(), maternal.transcripts)))
+        for x in candidate_transcripts
     ]
 
     for i in range(numReads):
@@ -507,19 +511,19 @@ for gene in genes:
         qual_idx = (qual_idx + 1) % len(qual_strs)
         max_qual_len = max(len(fwd_qual), len(rev_qual))
         ##########
-        # print(
-        #    f">>>>>>>>>>>>>>>> {i}th reads - transcript length {transcript_length}"
-        # )
-
+        if if_print:
+            print(
+                f">>>>>>>>>>>>> {geneid} {i}th reads - transcript length {transcript_length}"
+            )
         fragLen = random.choice(transcript_to_fragLen[patTranscript])
 
         # fragLen = pick_fragLen(fragLen_list, max_qual_len, transcript_length)
         # pos_idx = (pos_idx + 1) % len(pos1_tlen)
 
         if fragLen is None:
-            if if_debug:
+            if if_print:
                 print(
-                    f">> {geneid} {i} th read skipped! coudl not find appropriate fraglen"
+                    f">>>>>>>>>>>>> {geneid} {i} th read skipped! coudl not find appropriate fraglen"
                 )
             n_break += 1
             continue
@@ -538,7 +542,13 @@ for gene in genes:
             start2,
             end2,
         ) = simRead_patmat(
-            patTranscript, matTranscript, fwd_qual, rev_qual, fragLen, readLen
+            patTranscript,
+            matTranscript,
+            fwd_qual,
+            rev_qual,
+            fragLen,
+            readLen,
+            if_print=if_print,
         )
         # list_fragLen.append(fragLen)
         # list_start1.append(start1)
@@ -598,22 +608,14 @@ for gene in genes:
             #     print("")
             # write to file
             printRead(
-                str(identifier_random)
-                + ":if_maternal"
-                + str(if_mat)
-                + ":FWD"
-                + " /1",
+                str(identifier_random) + ":if_maternal" + str(if_mat) + ":FWD" + " /1",
                 randomSeq,
                 fwd_qual,
                 OUT1,
             )
             nextReadID += 1
             printRead(
-                str(identifier_random)
-                + ":if_maternal"
-                + str(if_mat)
-                + ":REV"
-                + " /1",
+                str(identifier_random) + ":if_maternal" + str(if_mat) + ":REV" + " /1",
                 randomSeq_rev,
                 rev_qual,
                 OUT2,
