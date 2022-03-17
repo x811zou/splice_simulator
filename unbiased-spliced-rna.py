@@ -182,12 +182,12 @@ parser.add_argument("read_depth", help="per-base-read-depth", type=int)
 parser.add_argument(
     "--out1",
     help="output name for forward strand fastq reads, default: read1.fastq.gz",
-    default="fwd.fastq.gz",
+    default="_1.fastq.gz",
 )
 parser.add_argument(
     "--out2",
     help="output name for reverse strand fastq reads, default: read2.fastq.gz",
-    default="rev.fastq.gz",
+    default="_2.fastq.gz",
 )
 parser.add_argument(
     "--out-prefix", help="prefix applied to output file names", default=""
