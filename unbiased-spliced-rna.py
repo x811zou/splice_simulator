@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # =========================================================================
-# This version is written by Scarlett
+# Xue Zou xue.zou@duke.edu
 # =========================================================================
 
 from concurrent.futures import process
@@ -153,47 +153,41 @@ def makeAltTranscript(gene, haplotype, variants, if_print=False):
 #   VCF must contain only one sample (individual).
 #   VCF must include all sites, including homozygous and heterozygous sites.
 #
-# EXAMPLE CONFIG FILE:
-#   util-dir = /Users/scarlett/BEASTIE/BEASTIE/reference/two_bit
-#   genome = /Users/scarlett/BEASTIE/BEASTIE/reference/two_bit/hg19.2bit
-#   aligned-rna = /Users/scarlett/allenlab/BEASTIE_other_example/HG00108_50M/HG00108.sam.gz
-#   fragment-lengths = /Users/scarlett/allenlab/BEASTIE_other_example/HG00108_50M/random_splice_simulator/fragment-lengths.txt
-#   vcf = /Users/scarlett/allenlab/BEASTIE_other_example/HG00108_50M/HG00108.with_chr.content.SNPs.hets.header.vcf.gz
-#   gff = /Users/scarlett/BEASTIE/BEASTIE/reference/two_bit/gencode.v19.annotation.filtered.chr5.gtf
-#   original-read-len = 75
-#   out_path = /Users/scarlett/allenlab/BEASTIE_other_example/HG00108_50M/random_splice_simulator
+#   N=21
+#   sample="HG00099"
+# 	util_dir=../twobit
+# 	genome=../hg19.2bit
+# 	gtf=../gencode.v19.annotation.level12.gtf
+# 	sam=../${sample}.sam.gz
+# 	vcf=../${sample}.with_chr.content.SNPs.hets.vcf.gz
+# 	out_path=../spliced_reads
+# 	read_depth=100
 #
 # EXAMPLE running command:
-# python sim-spliced-rna.py /Users/scarlett/allenlab/BEASTIE_other_example/HG00108_50M/random_splice_simulator/allchr.config 100 --chr chr21 -r -v
+# python unbiased-spliced-rna.py $util_dir $genome $gtf $sam $vcf 75 $out_path $read_depth --out_prefix chr${N} --chr chr${N} -r -v
 # ============================================
 
 # =========================================================================
 # main()
 # =========================================================================
-# if len(sys.argv) < 8:
-#     exit(
-#         os.path.basename(sys.argv[0])
-#         + " <config-file> <per-base-read-depth> <if_random> <if_print> <prefix> <out-read1.gz> <out-read2.gz>\n"
-#     )
-# (configFile, DEPTH, if_random, if_print, prefix, outFile1, outFile2) = sys.argv[1:]
+
 parser = argparse.ArgumentParser()
 parser.add_argument("twobit", help="full path to two bit")
 parser.add_argument("genome", help="full path to hg19.2bit")
 parser.add_argument("gff", help="full path to gencode gtf file")
 parser.add_argument("samgz", help="full path to sam.gz")
-parser.add_argument("vcf", help="full path to VCF file with chr")
-# parser.add_argument("readLen", help="original read length from reads")
+parser.add_argument("vcf", help="full path to VCF file without chr")
 parser.add_argument("out_path", help="output path")
 parser.add_argument("read_depth", help="per-base-read-depth", type=int)
 parser.add_argument(
     "--out1",
     help="output name for forward strand fastq reads, default: read1.fastq.gz",
-    default="read1.fastq.gz",
+    default="fwd.fastq.gz",
 )
 parser.add_argument(
     "--out2",
     help="output name for reverse strand fastq reads, default: read2.fastq.gz",
-    default="read2.fastq.gz",
+    default="rev.fastq.gz",
 )
 parser.add_argument(
     "--out-prefix", help="prefix applied to output file names", default=""
@@ -228,17 +222,6 @@ outFile2 = args.out2
 outPrefix = args.out_prefix
 if_random = args.random
 if_print = args.verbose
-# configFile = args.config_file
-
-# Load config file
-# configFile = ConfigFile(configFile)
-# twoBitDir = configFile.lookupOrDie("util-dir")
-# genome2bit = configFile.lookupOrDie("genome")
-# vcfFile = configFile.lookupOrDie("vcf")
-# samFile = configFile.lookupOrDie("aligned-rna")
-# gffFile = configFile.lookupOrDie("gff")
-# readLen = int(configFile.lookupOrDie("original-read-len"))
-# out_path = configFile.lookupOrDie("out_path")
 
 if_debug = False
 if if_print:
@@ -265,11 +248,15 @@ else:
         f"{datetime.now()} generate EQUAL pat/mat reads...", file=sys.stderr, flush=True
     )
 
-outFile1 = outPrefix + outFile1
-outFile2 = outPrefix + outFile2
+if len(outPrefix) > 0:
+    outFile1 = outPrefix + "." + outFile1
+    outFile2 = outPrefix + "." + outFile2
+else:
+    outFile1 = outPrefix + outFile1
+    outFile2 = outPrefix + outFile2
+
 if if_print:
     print(f"output file names {outFile1} {outFile2}")
-
 
 # Load GFF and fragment lengths
 gffReader = GffTranscriptReader()
@@ -312,13 +299,13 @@ if len(genes) == 0:
     print(f"No genes to process.  Exiting.")
     sys.exit()
 
-#    out_path = out_path + "/" + chromosome
-# else:
-#    out_path = out_path + "/allchr"
 out_path_folder = out_path + "/simulated_fastq"
-
-# Path(out_path).mkdir(parents=True, exist_ok=True)
 Path(out_path_folder).mkdir(parents=True, exist_ok=True)
+if target_gene is not None:
+    gene_folder = out_path + "/" + target_gene
+    Path(gene_folder).mkdir(parents=True, exist_ok=True)
+    out_path_folder = gene_folder
+    Path(out_path_folder).mkdir(parents=True, exist_ok=True)
 
 ## DEBUG
 # DEBUG_GENES = ["ENSG00000180530.5"]
@@ -376,6 +363,7 @@ regions = set()
 for idx, gene in enumerate(genes):
     counter += 1
     num_gene_gtf += 1
+    # print(f"{gene.getID()}")
     region_str = f"{gene.getSubstrate()}:{gene.getBegin()}-{gene.getEnd()}"
     regions.add(region_str)
 
@@ -411,20 +399,29 @@ recorded_genes = 0
 not_in_sam = 0
 in_sam_not_in_vcf = 0
 start_time_ns = time.perf_counter_ns()
-# list_fragLen = []
+list_fragLen = []
 for gene in genes:
-    # list_start1 = []
-    # list_start2 = []
-    # list_end1 = []
-    # list_end2 = []
-    transcript = gene.longestTranscript()
-    transcript.exons = transcript.getRawExons()
-    transcript.recomputeBoundaries()
+    # print(f"{gene.getSubstrate()}:{gene.getBegin()}-{gene.getEnd()}")
+    if target_gene is not None:
+        list_start1 = []
+        list_start2 = []
+        list_end1 = []
+        list_end2 = []
+    # transcript = gene.longestTranscript()
+    # transcript.exons = transcript.getRawExons()
+    # print(f"{gene.getSubstrate()}:{gene.getBegin()}-{gene.getEnd()}")
+    # transcript.recomputeBoundaries()
+    # print(f"{gene.getSubstrate()}:{gene.getBegin()}-{gene.getEnd()}")
     region_str = f"{gene.getSubstrate()}:{gene.getBegin()}-{gene.getEnd()}"
+
     chrN = gene.getSubstrate()
     geneid = gene.getId()
     length = gene.longestTranscript().getLength()
-
+    # if target_gene is not None:
+    #     if if_print:
+    #         print(
+    #             f"DEBUG... {geneid}, gene region: {region_str}, longest transcript length: {length}"
+    #         )
     if processed_genes > 0 and processed_genes % 100 == 0:
         sec_per_gene = (time.perf_counter_ns() - start_time_ns) / processed_genes / 1e9
         estimated_seconds_remaining = round(
@@ -436,13 +433,17 @@ for gene in genes:
             flush=True,
         )
     processed_genes += 1
-
     ###### filtering 1
+    # print(region_str)
+    # print(region_str_to_sam_data)
+
     if not region_str in region_str_to_sam_data:
         # if if_print:
         #     print(f"{chrN},gene: {geneid}, no mapped reads in SAM, skip")
         not_in_sam += 1
         continue
+    # print(region_str_to_variants)
+
     if not region_str in region_str_to_variants:
         # if if_print:
         #     print(f"{chrN},gene: {geneid}, no variants/records in VCF, skip")
@@ -457,27 +458,34 @@ for gene in genes:
         continue
 
     ###### filtering 2
-    # print(">>>>>>>>>>>>>>>> input pos1_tlen list")
-    # print(pos1_tlen)
+    # if if_print:
+    #     if target_gene is not None:
+    #         print("DEBUG... input pos1_tlen list")
+    #         print(pos1_tlen)
+
     pos1_tlen_to_count = {}
     for x in pos1_tlen:
         pos1_tlen_to_count[x] = (
             pos1_tlen_to_count[x] + 1 if x in pos1_tlen_to_count else 1
         )
 
-    minQualLen = min([len(x) for x in qual_strs])
+    minQualLen = min([len(x) for x in qual_strs])  # maybe 75
 
     # if len(pos1_tlen) > 999:
     # print(f"{datetime.now()}\t{geneid}\ttranscripts: {gene.getNumTranscripts()}\treads: {len(pos1_tlen)}\tdeduped reads: {len(pos1_tlen_to_count)}\tunique_pos1: {len(set([x[0] for x in pos1_tlen]))}")
-    transcript_to_fragLen = posTlen_to_fragLen(gene, pos1_tlen_to_count, minQualLen)
+    if_debug = False
+    if if_print:
+        if target_gene is not None:
+            if_debug = True
+    transcript_to_fragLen = posTlen_to_fragLen(
+        gene, pos1_tlen_to_count, minQualLen, if_debug=if_debug
+    )
     # concat values for real fragLen
-    # print(f"{' '.join([str(len(l)) for l in transcript_to_fragLen.values()])}")
 
     if len(transcript_to_fragLen) == 0:
         # print("empty fragLen list!")
         continue
-    # print(">>>>>>>>>>>>>>>> output fragLen list")
-    # print(fragLen_list)
+
     recorded_genes += 1
     # if if_print:
     #     print(
@@ -490,11 +498,20 @@ for gene in genes:
     )
     paternal, transcriptIdToBiSNPpos, _ = makeAltTranscript(gene, 0, variants)
     qual_idx = 0
-    # pos_idx = 0
-    # counter = 0
     list_fragLen = []
 
     candidate_transcripts = list(transcript_to_fragLen.keys())
+    # if if_print:
+    #     if target_gene is not None:
+    #         print(
+    #             f">>>>>>>>>>>>>>>>\n>>>>>>>>>>>>>>>>{len(transcript_to_fragLen)} available transcripts:"
+    #         )
+    #         for trans in candidate_transcripts:
+    #             print(
+    #                 f"{trans.getID()} CDS region: {trans.getCDSbeginEnd()} transcript region: {trans.getBegin()},{trans.getEnd()}"
+    #             )
+    #             print(f"{trans.getID()}-{transcript_to_fragLen[trans]}")
+
     candidate_transcript_pairs = [
         (x, next(filter(lambda y: y.getID() == x.getID(), maternal.transcripts)))
         for x in candidate_transcripts
@@ -504,9 +521,14 @@ for gene in genes:
     for i in range(numReads):
         patTranscript, matTranscript = random.choice(candidate_transcript_pairs)
         transcript_length = matTranscript.getLength()
-
         frag_lens = transcript_to_fragLen[patTranscript]
         min_frag_len = min(frag_lens)
+        # if if_print:
+        #     if target_gene is not None:
+        #         print(">>>>>>>>>>>>>>>>\n>>>>>>>>>>>>>>>> print candidate transcripts")
+        #         print(
+        #             f"{i}-th reads, transcript {patTranscript.getID()} length: {transcript_length}, fragLen list: {frag_lens}, transcript CDS begin-end: {patTranscript.getCDSbeginEnd()}, transcript begin-end: {patTranscript.getBegin()}-{patTranscript.getEnd()}"
+        #         )
 
         assert min_frag_len <= transcript_length
         fragLen = random.choice(frag_lens)
@@ -536,13 +558,14 @@ for gene in genes:
             fwd_qual,
             rev_qual,
             fragLen,
-            if_print=if_print,
+            if_print=if_debug,
         )
-        # list_fragLen.append(fragLen)
-        # list_start1.append(start1)
-        # list_end1.append(end1)
-        # list_start2.append(start2)
-        # list_end2.append(end2)
+        if target_gene is not None:
+            list_fragLen.append(fragLen)
+            list_start1.append(start1)
+            list_end1.append(end1)
+            list_start2.append(start2)
+            list_end2.append(end2)
         if patSeq is None or matSeq is None:
             n_break += 1
             continue  # gene is shorter than fragment length
@@ -658,21 +681,22 @@ for gene in genes:
                 OUT2,
             )
         nextReadID += 1
-        # if processed_genes <= 10:
-        #     out = out_path + "/start_end_pos" + "/" + str(geneid)
-        #     Path(out).mkdir(parents=True, exist_ok=True)
-        #     with open(out + "/start1", "wb") as fp:
-        #         pickle.dump(list_start1, fp)
-        #     with open(out + "/end1", "wb") as fp:
-        #         pickle.dump(list_end1, fp)
-        #     with open(out + "/start2", "wb") as fp:
-        #         pickle.dump(list_start2, fp)
-        #     with open(ovi testut + "/end2", "wb") as fp:
-        #         pickle.dump(list_end2, fp)
 
-Path(out_path + "/fragLen").mkdir(parents=True, exist_ok=True)
-with open(out_path + "/simulated_fragLen.txt", "wb") as fp:
-    pickle.dump(list_fragLen, fp)
+        if target_gene is not None:
+            out = gene_folder
+            Path(out).mkdir(parents=True, exist_ok=True)
+            with open(out + "/trans_start1", "wb") as fp:
+                pickle.dump(list_start1, fp)
+            with open(out + "/trans_end1", "wb") as fp:
+                pickle.dump(list_end1, fp)
+            with open(out + "/trans_start2", "wb") as fp:
+                pickle.dump(list_start2, fp)
+            with open(out + "/trans_end2", "wb") as fp:
+                pickle.dump(list_end2, fp)
+
+if target_gene is not None:
+    with open(gene_folder + "/fragLen", "wb") as fp:
+        pickle.dump(list_fragLen, fp)
 
 print(
     f"{datetime.now()} DONE",

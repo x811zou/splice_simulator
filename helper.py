@@ -80,7 +80,7 @@ def printRead(header, seq, qual, FH):
     print(header + "\n" + seq + "\n+\n" + qual, file=FH)
 
 
-def tabix_regions(regions, line_processor, target_file_path=None, comment_char="#"):
+def tabix_regions(regions, line_processor, target_file_path, comment_char="#"):
     region_to_results = {}
 
     print(
@@ -172,31 +172,32 @@ def sam_data_processor(line):
     return result
 
 
-def simRead_patmat(
-    refTranscript, altTranscript, qual1, qual2, fragLen, if_print=False
-):
+def simRead_patmat(refTranscript, altTranscript, qual1, qual2, fragLen, if_print=False):
     #####################################################################
     # transcript length
     L = len(refTranscript.sequence)
     # transcript seq index start/end
     L_end = L - 1
     L_start = 0
-
     # fragLen: actual read length drawn from SAM
     if L_end < fragLen or L_end < len(qual1) or L_end < len(qual2):
         return (None, None, None, None, None, None)
     # transcript coord
     lastStart = min(L_end - fragLen, L_end - len(qual1), L_end - len(qual2))  # 20
     start1 = random.randrange(lastStart + 1)  # 10
+    start1_genome = refTranscript.mapToGenome(start1)
     end1 = start1 + len(qual1)  # rec1.readLen  # 10+75 = 85
+    end1_genome = refTranscript.mapToGenome(end1)
     LEN1 = abs(end1 - start1)
     end2 = start1 + fragLen  # 10+80 = 90
+    end2_genome = refTranscript.mapToGenome(end2)
     start2 = end2 - len(qual2)  # rec2.readLen  # 90-75 = 15
+    start2_genome = refTranscript.mapToGenome(start2)
     LEN2 = abs(end2 - start2)
-    if if_print:
-        print(
-            f"L{L} - start1:{start1} - fragLen: {fragLen} - qual1: {len(qual1)} - qual2: {len(qual2)} -  start2:{start2}"
-        )
+    # if if_print:
+    #     print(
+    #         f"L{L} - start1-end1:{start1_genome}-{end1_genome} - fragLen: {fragLen} - qual1: {len(qual1)} - qual2: {len(qual2)} -  start2:{start2_genome}-{end2_genome}"
+    #     )
     assert start1 >= L_start
     assert end1 <= L_end
     assert start2 >= L_start
@@ -238,7 +239,7 @@ def print_verbose(s):
         print(s)
 
 
-def posTlen_to_fragLen(gene, pos1_tlen_to_count, readLen):
+def posTlen_to_fragLen(gene, pos1_tlen_to_count, readLen, if_debug=False):
     transcript_to_mapped_lengths = {}
 
     for i in range(gene.getNumTranscripts()):
@@ -264,6 +265,10 @@ def posTlen_to_fragLen(gene, pos1_tlen_to_count, readLen):
             if end < 0:
                 continue
             mapped_length = abs(end - begin)
+            # if if_debug:
+            #     print(
+            #         f"transcript {i}:{pos1_tlen} mapped start,end: ({begin},{end}) fragLen {mapped_length}"
+            #     )
             if mapped_length < readLen:
                 continue
 
