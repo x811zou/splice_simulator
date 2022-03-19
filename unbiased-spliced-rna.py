@@ -181,12 +181,12 @@ parser.add_argument("out_path", help="output path")
 parser.add_argument("read_depth", help="per-base-read-depth", type=int)
 parser.add_argument(
     "--out1",
-    help="output name for forward strand fastq reads, default: read1.fastq.gz",
+    help="output name for forward strand fastq reads, default: read_1.fastq.gz",
     default="_1.fastq.gz",
 )
 parser.add_argument(
     "--out2",
-    help="output name for reverse strand fastq reads, default: read2.fastq.gz",
+    help="output name for reverse strand fastq reads, default: read_2.fastq.gz",
     default="_2.fastq.gz",
 )
 parser.add_argument(
@@ -249,11 +249,11 @@ else:
     )
 
 if len(outPrefix) > 0:
-    outFile1 = outPrefix + "." + outFile1
-    outFile2 = outPrefix + "." + outFile2
-else:
     outFile1 = outPrefix + outFile1
     outFile2 = outPrefix + outFile2
+else:
+    outFile1 = "read" + outFile1
+    outFile2 = "read" + outFile2
 
 if if_print:
     print(f"output file names {outFile1} {outFile2}")
@@ -299,7 +299,7 @@ if len(genes) == 0:
     print(f"No genes to process.  Exiting.")
     sys.exit()
 
-out_path_folder = out_path + "/simulated_fastq"
+out_path_folder = out_path
 Path(out_path_folder).mkdir(parents=True, exist_ok=True)
 if target_gene is not None:
     gene_folder = out_path + "/" + target_gene
