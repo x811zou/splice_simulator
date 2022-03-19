@@ -80,7 +80,9 @@ def printRead(header, seq, qual, FH):
     print(header + "\n" + seq + "\n+\n" + qual, file=FH)
 
 
-def tabix_regions(regions, line_processor, target_file_path, comment_char="#"):
+def tabix_regions(
+    regions, line_processor, target_file_path, comment_char="#", region_prefix=""
+):
     region_to_results = {}
 
     print(
@@ -92,7 +94,7 @@ def tabix_regions(regions, line_processor, target_file_path, comment_char="#"):
             for region in regions:
                 chr, rest = region.split(":")
                 start, end = rest.split("-")
-                file.write(f"{chr}\t{start}\t{end}\n")
+                file.write(f"{region_prefix}{chr}\t{start}\t{end}\n")
             file.flush()
             command = (
                 f"tabix --separate-regions {target_file_path} --regions {file.name}"
@@ -113,7 +115,7 @@ def tabix_regions(regions, line_processor, target_file_path, comment_char="#"):
             continue
         # start accumulating new region
         if line.startswith(comment_char):
-            region_str = line[1:]
+            region_str = line[1:].strip(region_prefix)
             records = []
             region_to_results[region_str] = records
             continue

@@ -357,14 +357,19 @@ print(
 )
 ####### extract regions for genes from reference gencode GTF
 # Build list of gene regions to extract
+
+
+def get_region_str(gene):
+    return f"{gene.getSubstrate().strip('chr')}:{gene.getBegin()}-{gene.getEnd()}"
+
+
 #######
 
 regions = set()
 for idx, gene in enumerate(genes):
     counter += 1
     num_gene_gtf += 1
-    # print(f"{gene.getID()}")
-    region_str = f"{gene.getSubstrate()}:{gene.getBegin()}-{gene.getEnd()}"
+    region_str = get_region_str(gene)
     regions.add(region_str)
 
 print(
@@ -383,7 +388,7 @@ region_str_to_variants = tabix_regions(
 # dict3: gene_to_qualityStr {gene region}:{quality string score from sam.gz}
 #######
 region_str_to_sam_data = tabix_regions(
-    regions, sam_data_processor, samFile, comment_char="@"
+    regions, sam_data_processor, samFile, comment_char="@", region_prefix="chr"
 )
 
 #######
@@ -412,7 +417,7 @@ for gene in genes:
     # print(f"{gene.getSubstrate()}:{gene.getBegin()}-{gene.getEnd()}")
     # transcript.recomputeBoundaries()
     # print(f"{gene.getSubstrate()}:{gene.getBegin()}-{gene.getEnd()}")
-    region_str = f"{gene.getSubstrate()}:{gene.getBegin()}-{gene.getEnd()}"
+    region_str = get_region_str(gene)
 
     chrN = gene.getSubstrate()
     geneid = gene.getId()
