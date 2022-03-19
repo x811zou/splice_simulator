@@ -89,12 +89,14 @@ def tabix_regions(
         f"{datetime.now()} Start tabix extraction of {len(regions)} regions from file {target_file_path}"
     )
 
+    regions=list(map(lambda x: region_prefix + x, regions))
+
     if len(regions) > 1000:
         with tempfile.NamedTemporaryFile(mode="w") as file:
             for region in regions:
                 chr, rest = region.split(":")
                 start, end = rest.split("-")
-                file.write(f"{region_prefix}{chr}\t{start}\t{end}\n")
+                file.write(f"{chr}\t{start}\t{end}\n")
             file.flush()
             command = (
                 f"tabix --separate-regions {target_file_path} --regions {file.name}"
