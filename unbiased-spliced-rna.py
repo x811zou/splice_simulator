@@ -377,6 +377,7 @@ print(
     file=sys.stderr,
     flush=True,
 )
+
 ####### extract regions for genes from VCF file
 # dict2: gene_to_variants {gene region}:{records from VCF}
 #######
@@ -404,29 +405,31 @@ recorded_genes = 0
 not_in_sam = 0
 in_sam_not_in_vcf = 0
 start_time_ns = time.perf_counter_ns()
-list_fragLen = []
+if target_gene is not None:
+    list_fragLen = []
+
 for gene in genes:
-    # print(f"{gene.getSubstrate()}:{gene.getBegin()}-{gene.getEnd()}")
+    region_str = get_region_str(gene)
+    chrN = gene.getSubstrate()
+    geneid = gene.getId()
+    length = gene.longestTranscript().getLength()
+    # DEBUGGING start
     if target_gene is not None:
+        print(f"{gene.getSubstrate()}:{gene.getBegin()}-{gene.getEnd()}")
         list_start1 = []
         list_start2 = []
         list_end1 = []
         list_end2 = []
-    # transcript = gene.longestTranscript()
-    # transcript.exons = transcript.getRawExons()
-    # print(f"{gene.getSubstrate()}:{gene.getBegin()}-{gene.getEnd()}")
-    # transcript.recomputeBoundaries()
-    # print(f"{gene.getSubstrate()}:{gene.getBegin()}-{gene.getEnd()}")
-    region_str = get_region_str(gene)
-
-    chrN = gene.getSubstrate()
-    geneid = gene.getId()
-    length = gene.longestTranscript().getLength()
-    # if target_gene is not None:
-    #     if if_print:
-    #         print(
-    #             f"DEBUG... {geneid}, gene region: {region_str}, longest transcript length: {length}"
-    #         )
+        transcript = gene.longestTranscript()
+        transcript.exons = transcript.getRawExons()
+        print(f"{gene.getSubstrate()}:{gene.getBegin()}-{gene.getEnd()}")
+        transcript.recomputeBoundaries()
+        print(f"{gene.getSubstrate()}:{gene.getBegin()}-{gene.getEnd()}")
+        if if_print:
+            print(
+                f"DEBUG... {geneid}, gene region: {region_str}, longest transcript length: {length}"
+            )
+    # DEBUGGING end
     if processed_genes > 0 and processed_genes % 100 == 0:
         sec_per_gene = (time.perf_counter_ns() - start_time_ns) / processed_genes / 1e9
         estimated_seconds_remaining = round(
@@ -438,17 +441,12 @@ for gene in genes:
             flush=True,
         )
     processed_genes += 1
-    ###### filtering 1
-    # print(region_str)
-    # print(region_str_to_sam_data)
 
     if not region_str in region_str_to_sam_data:
         # if if_print:
         #     print(f"{chrN},gene: {geneid}, no mapped reads in SAM, skip")
         not_in_sam += 1
         continue
-    # print(region_str_to_variants)
-
     if not region_str in region_str_to_variants:
         # if if_print:
         #     print(f"{chrN},gene: {geneid}, no variants/records in VCF, skip")
@@ -462,12 +460,6 @@ for gene in genes:
     if len(qual_strs) == 0 or len(pos1_tlen) == 0:
         continue
 
-    ###### filtering 2
-    # if if_print:
-    #     if target_gene is not None:
-    #         print("DEBUG... input pos1_tlen list")
-    #         print(pos1_tlen)
-
     pos1_tlen_to_count = {}
     for x in pos1_tlen:
         pos1_tlen_to_count[x] = (
@@ -476,8 +468,6 @@ for gene in genes:
 
     minQualLen = min([len(x) for x in qual_strs])  # maybe 75
 
-    # if len(pos1_tlen) > 999:
-    # print(f"{datetime.now()}\t{geneid}\ttranscripts: {gene.getNumTranscripts()}\treads: {len(pos1_tlen)}\tdeduped reads: {len(pos1_tlen_to_count)}\tunique_pos1: {len(set([x[0] for x in pos1_tlen]))}")
     if_debug = False
     if if_print:
         if target_gene is not None:
@@ -485,7 +475,6 @@ for gene in genes:
     transcript_to_fragLen = posTlen_to_fragLen(
         gene, pos1_tlen_to_count, minQualLen, if_debug=if_debug
     )
-    # concat values for real fragLen
 
     if len(transcript_to_fragLen) == 0:
         # print("empty fragLen list!")
