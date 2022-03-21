@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # =========================================================================
-# Xue Zou xue.zou@duke.edu
+# Copyright (C) Xue Zou (xue.zou@duke.edu)
 # =========================================================================
 
 from concurrent.futures import process
