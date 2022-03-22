@@ -231,9 +231,6 @@ if_random = args.random
 if_print = args.verbose
 
 random.seed(args.seed)
-# seed = random.randrange(sys.maxsize)
-
-# random.seed(seed)
 print(f"simulation seed : {args.seed}")
 
 
