@@ -200,6 +200,13 @@ parser.add_argument(
     action="store_true",
     help="generate reads randomly from either haplotype",
 )
+parser.add_argument(
+    "--seed",
+    help="random seed for simulation",
+    default=random.randrange(sys.maxsize),
+    type=int,
+)
+
 parser.add_argument("-v", "--verbose", action="store_true", help="print lots of info")
 args = parser.parse_args()
 if args.chr:
@@ -222,6 +229,13 @@ outFile2 = args.out2
 outPrefix = args.out_prefix
 if_random = args.random
 if_print = args.verbose
+
+random.seed(args.seed)
+# seed = random.randrange(sys.maxsize)
+
+# random.seed(seed)
+print(f"simulation seed : {args.seed}")
+
 
 if_debug = False
 if if_print:
