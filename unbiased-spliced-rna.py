@@ -231,7 +231,7 @@ if_random = args.random
 if_print = args.verbose
 
 random.seed(args.seed)
-print(f"simulation seed : {args.seed}")
+print(f"simulation seed : {args.seed}", flush=True)
 
 
 if_debug = False
@@ -342,16 +342,15 @@ print(
     flush=True,
 )
 
-suffix = "".join([random.choice(string.ascii_letters) for i in range(6)])
-twoBitInputFile = f"/tmp/twobitinput_{suffix}"
-constructTwoBitInput(genes, twoBitInputFile)
+with tempfile.NamedTemporaryFile(mode="w") as twoBitInputFile:
+    constructTwoBitInput(genes, twoBitInputFile.name)
 
-print(
-    f"{datetime.now()} running 2bit",
-    file=sys.stderr,
-    flush=True,
-)
-twobitId_to_seq = run2bitBatch(twoBitDir, twoBitInputFile, genome2bit)
+    print(
+        f"{datetime.now()} running 2bit",
+        file=sys.stderr,
+        flush=True,
+    )
+    twobitId_to_seq = run2bitBatch(twoBitDir, twoBitInputFile.name, genome2bit)
 
 print(
     f"{datetime.now()} done running 2bit {len(twobitId_to_seq)} ids",
