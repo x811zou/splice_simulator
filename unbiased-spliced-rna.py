@@ -417,8 +417,11 @@ in_sam_not_in_vcf = 0
 start_time_ns = time.perf_counter_ns()
 if target_gene is not None:
     list_fragLen = []
+list_ratio = []
 
 for gene in genes:
+    mat = 0 
+    pat = 0
     region_str = get_region_str(gene)
     chrN = gene.getSubstrate()
     geneid = gene.getId()
@@ -579,6 +582,9 @@ for gene in genes:
             if_mat = False
             if random_prob >= 0.5:
                 if_mat = True
+                mat += 1
+            else:
+                pat += 1
             identifier_random = "@SIM-" + str(nextReadID) + "-" + str(geneid)
             # if if_print:
             #     print(
@@ -697,6 +703,11 @@ for gene in genes:
                 pickle.dump(list_start2, fp)
             with open(out + "/trans_end2", "wb") as fp:
                 pickle.dump(list_end2, fp)
+    list_ratio.append((mat+1)/(pat+1))
+
+if chromosome is not None:
+    with open(out_path + "/matpat_ratio_"+str(chromosome)+".plk", "wb") as fp:
+        pickle.dump(list_ratio, fp)
 
 if target_gene is not None:
     with open(gene_folder + "/fragLen", "wb") as fp:
