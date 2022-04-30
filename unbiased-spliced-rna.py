@@ -703,7 +703,8 @@ for gene in genes:
                 pickle.dump(list_start2, fp)
             with open(out + "/trans_end2", "wb") as fp:
                 pickle.dump(list_end2, fp)
-    list_ratio.append(mat/(pat+mat))
+    ratio=mat/(pat+mat)
+    list_ratio.append(ratio)
 
 if chromosome is not None:
     with open(out_path + "/mat_ratio_"+str(chromosome)+".pkl", "wb") as fp:
