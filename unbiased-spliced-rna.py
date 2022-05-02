@@ -55,13 +55,13 @@ matches = 0  # number of sites containing alt or ref allele in transcript
 mismatches = 0  # number of sites having neither ref nor alt allele in transcript
 
 
-def makeAltTranscript(gene, haplotype, variants, if_print=False):
+def makeAltTranscript(gene, haplotype, variants,if_print=False):
     #########
     # this function is used to create a set of REF copy of a gene transcrips, or ALT copy
     # REF copy (haplotype == 0): replace the REF allele for variants in ref gencode filtered transcript to actual REF allele in VCF
     # ALT copy (haplotype == 1): replace the REF allele for variants in ref gencode filtered transcript to actual ALT allele in VCF
     # allele_in_vcf : allele in VCF
-    # allele_in_ref : allele in reference transcript (gencode GTF hg19.v19)
+    # refallele_in_ref : allele in reference transcript (gencode GTF hg19.v19)
     # match: allele in gencode ref transcript (reversed if in reverse strand) MATCH the allele in VCF
     # mismatch: ... NOT MATCH ...
     #########
@@ -72,76 +72,80 @@ def makeAltTranscript(gene, haplotype, variants, if_print=False):
     transcriptIdToBiSNPcount = {}
     transcriptIdToBiSNPpos = defaultdict(set)
     transcript_num = 0
+    if if_print:
+        print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> simulation ")
     # loop through each ref gencode transcript, create a REF/ALT copy based on VCF
     for transcript in altGene.transcripts:
-        # print(f"transcript {transcript_num}len {len(transcript.sequence)}")
-        array = list(transcript.sequence)
         transcript_num += 1
         num = 0
+        if if_print:
+            print(f"transcript {transcript_num} - {transcript.getID()}: len {len(transcript.sequence)}")
+        array = list(transcript.sequence)
         # loop through each bi-allelic SNP from VCF
         for variant in variants:
             trans_pos = transcript.mapToTranscript(variant.genomicPos)
             if trans_pos < 0:
                 continue
+            if if_print:
+                print(f"transcript {transcript_num} - {transcript.getID()}: genomic pos {variant.genomicPos} - trans pos: {trans_pos}")
             if variant.genotype[0] != variant.genotype[1]:
-                transcriptIdToBiSNPpos[transcript.getID()].add(trans_pos)
+                transcriptIdToBiSNPpos[transcript.getID()].add(variant.genomicPos)
                 num += 1
+            refallele_in_ref = array[trans_pos]
             # sanity check
             if haplotype == 0:
-                ref_in_ref = array[trans_pos]
                 allele_in_vcf = variant.ref
                 if (
                     gene.getStrand() == "-"
                 ):  # reverse the allele if it is in the reverse strand
+                    if_rev = True
                     allele_in_vcf = Translation.reverseComplement(allele_in_vcf)
-                allele_check = allele_in_vcf
-                # print(
-                #     f">>> {gene.getStrand()} -- VCF: {variant.genotype[0]} | {variant.genotype[1]} - {variant.ref}|{variant.alt}; vcf {allele_check} vs reference: {ref_in_ref}"
-                # )
-                if allele_check == ref_in_ref:
+                ### debugging start
+                if if_print:
+                    print(
+                        f">>> ref/pat haplotype simulation {gene.getStrand()} -- VCF: {variant.genotype[0]} | {variant.genotype[1]} - ref:{variant.ref}|alt:{variant.alt}; vs reference: {refallele_in_ref}"
+                    )
+                if allele_in_vcf == refallele_in_ref:
                     # print("match")
                     matches += 1
                 else:
                     # print("mismatch")
                     mismatches += 1
-
-            # use REF/ALT allele in VCF to modify the reference transcript
-            if variant.genotype[haplotype] > 0:
+                ### debugging end
+            elif haplotype == 1: #if variant.genotype[haplotype] > 0:
                 allele_in_vcf = variant.alt
                 if (
                     gene.getStrand() == "-"
                 ):  # reverse the allele if it is in the reverse strand
+                    if_rev = True
                     allele_in_vcf = Translation.reverseComplement(allele_in_vcf)
-                array[trans_pos] = allele_in_vcf
+            # use REF/ALT allele in VCF to modify the reference transcript
+            array[trans_pos] = allele_in_vcf
 
             ##########################
-            # if if_print is not False:
-            #     print(
-            #         "        %dth transcript, %dth bi-allelic SNP"
-            #         % (transcript_num, num)
-            #     )
-            #     print(
-            #         "            > if reverse strand: %s, variant trans pos: %s, haplotype: %s, in ref genome: %s, allele check %s, ref: %s, alt: %s, write_in_sequence: %s"
-            #         % (
-            #             str(if_rev),
-            #             trans_pos,
-            #             variant.genotype,
-            #             allele_in_ref,
-            #             allele_check,
-            #             variant.ref,
-            #             variant.alt,
-            #             array[trans_pos],
-            #         )
-            #     )
+            if if_print:
+                print(
+                    "            > if reverse strand: %s, haplotype: %s, in ref genome %s, in VCF: %s, ref: %s, alt: %s, write_in_sequence: %s"
+                    % (
+                        str(if_rev),
+                        haplotype,
+                        refallele_in_ref,
+                        allele_in_vcf,
+                        variant.ref,
+                        variant.alt,
+                        array[trans_pos],
+                    )
+                )
         transcript.sequence = "".join(array)
         transcriptIdToBiSNPcount[transcript.getID()] = num
-        # print(transcriptIdToBiSNPpos)
-        # if if_print:
-        #     print(
-        #         "        >>>>>> %dth transcript, in total %d bi-allelic SNP"
-        #         % (transcript_num, num)
-        #     )
-        #     print(" ")
+        if if_print:
+            print(
+                ">>>>>> %dth transcript, in total %d bi-allelic SNP"
+                % (transcript_num, num)
+            )
+            print(" ")
+    if if_print: 
+        print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> ")
     return altGene, transcriptIdToBiSNPpos, transcript_num
 
 
@@ -212,7 +216,7 @@ args = parser.parse_args()
 if args.chr:
     print(f"single chromosome mode turned on : {args.chr}")
 if args.verbose:
-    print("printing mode turned on")
+    print(f"{datetime.now()} printing mode turned on")
     print(args)
 
 twoBitDir = args.twobit
@@ -233,8 +237,11 @@ if_print = args.verbose
 random.seed(args.seed)
 print(f"simulation seed : {args.seed}", flush=True)
 
-
 if_debug = False
+if target_gene is not None:
+    if_print = True
+    if_debug = True
+
 if if_print:
     print(
         f"{datetime.now()} Yes, print out simulation logs...",
@@ -259,15 +266,6 @@ else:
         f"{datetime.now()} generate EQUAL pat/mat reads...", file=sys.stderr, flush=True
     )
 
-if len(outPrefix) > 0:
-    outFile1 = outPrefix + outFile1
-    outFile2 = outPrefix + outFile2
-else:
-    outFile1 = "read" + outFile1
-    outFile2 = "read" + outFile2
-
-if if_print:
-    print(f"output file names {outFile1} {outFile2}")
 
 # Load GFF and fragment lengths
 gffReader = GffTranscriptReader()
@@ -310,19 +308,31 @@ if len(genes) == 0:
     print(f"No genes to process.  Exiting.")
     sys.exit()
 
+if len(outPrefix) > 0:
+    outFile1 = outPrefix + outFile1
+    outFile2 = outPrefix + outFile2
+else:
+    if target_gene is not None:
+        outFile1 = target_gene + outFile1
+        outFile2 = target_gene + outFile2
+    else:
+        outFile1 = "read" + outFile1
+        outFile2 = "read" + outFile2
+
+if if_print:
+    if target_gene is not None:
+        print(f"output file names {outFile1} {outFile2}")
+    else:
+        print(f"output file names {outFile1} {outFile2}")
+    
 out_path_folder = out_path
 Path(out_path_folder).mkdir(parents=True, exist_ok=True)
+
 if target_gene is not None:
     gene_folder = out_path + "/" + target_gene
     Path(gene_folder).mkdir(parents=True, exist_ok=True)
     out_path_folder = gene_folder
     Path(out_path_folder).mkdir(parents=True, exist_ok=True)
-
-## DEBUG
-# DEBUG_GENES = ["ENSG00000180530.5"]
-# if DEBUG_GENES is not None:
-#     print(f"Debugging specific genes: {DEBUG_GENES}")
-#     genes = list(filter(lambda x: x.getId() in DEBUG_GENES, genes))
 
 # Create output files
 OUT1 = gzip.open(out_path_folder + "/" + outFile1, "wt")
@@ -344,7 +354,6 @@ print(
 
 with tempfile.NamedTemporaryFile(mode="w") as twoBitInputFile:
     constructTwoBitInput(genes, twoBitInputFile.name)
-
     print(
         f"{datetime.now()} running 2bit",
         file=sys.stderr,
@@ -418,6 +427,7 @@ start_time_ns = time.perf_counter_ns()
 if target_gene is not None:
     list_fragLen = []
 list_ratio = []
+if_debug = False
 
 for gene in genes:
     mat = 0 
@@ -428,20 +438,15 @@ for gene in genes:
     length = gene.longestTranscript().getLength()
     # DEBUGGING start
     if target_gene is not None:
-        print(f"{gene.getSubstrate()}:{gene.getBegin()}-{gene.getEnd()}")
         list_start1 = []
         list_start2 = []
         list_end1 = []
         list_end2 = []
         transcript = gene.longestTranscript()
         transcript.exons = transcript.getRawExons()
-        print(f"{gene.getSubstrate()}:{gene.getBegin()}-{gene.getEnd()}")
-        transcript.recomputeBoundaries()
-        print(f"{gene.getSubstrate()}:{gene.getBegin()}-{gene.getEnd()}")
-        if if_print:
-            print(
-                f"DEBUG... {geneid}, gene region: {region_str}, longest transcript length: {length}"
-            )
+        print(
+            f"DEBUG... {geneid}, gene region: {region_str}, longest transcript length: {length}"
+        )
     # DEBUGGING end
     if processed_genes > 0 and processed_genes % 100 == 0:
         sec_per_gene = (time.perf_counter_ns() - start_time_ns) / processed_genes / 1e9
@@ -456,68 +461,60 @@ for gene in genes:
     processed_genes += 1
 
     if not region_str in region_str_to_sam_data:
-        # if if_print:
-        #     print(f"{chrN},gene: {geneid}, no mapped reads in SAM, skip")
+        if if_print:
+            print(f"{chrN},gene: {geneid}, no mapped reads in SAM, skip")
         not_in_sam += 1
         continue
     if not region_str in region_str_to_variants:
-        # if if_print:
-        #     print(f"{chrN},gene: {geneid}, no variants/records in VCF, skip")
+        if if_print:
+            print(f"{chrN},gene: {geneid}, no variants/records in VCF, skip")
         in_sam_not_in_vcf += 1
         continue
-
+    # gene_to_variants {gene region}:{records from VCF}
     variants = region_str_to_variants[region_str]
+    # gene_to_qualityStr {gene region}:{quality string score from sam.gz}
     sam_data = region_str_to_sam_data[region_str]
-    pos1_tlen = [x[0] for x in sam_data]
-    qual_strs = [x[1] for x in sam_data]
+    # within each gene, we obtain the reads information from SAM file
+    pos1_tlen = [x[0] for x in sam_data]  # start pos of reads, quality string length
+    qual_strs = [x[1] for x in sam_data]  # quality string
     if len(qual_strs) == 0 or len(pos1_tlen) == 0:
         continue
-
+    # summarize start pos of reads, quality string length for this gene: {(89635, 124): 1, (89665, 187): 1}
     pos1_tlen_to_count = {}
     for x in pos1_tlen:
         pos1_tlen_to_count[x] = (
             pos1_tlen_to_count[x] + 1 if x in pos1_tlen_to_count else 1
         )
-
-    minQualLen = min([len(x) for x in qual_strs])  # maybe 75
-
-    if_debug = False
-    if if_print:
-        if target_gene is not None:
-            if_debug = True
+    # calculate the minimum quality length of quality string for this gene, maybe 75
+    minQualLen = min([len(x) for x in qual_strs])  
+    ######## filter1: loop through each transcript, to 
     transcript_to_fragLen = posTlen_to_fragLen(
-        gene, pos1_tlen_to_count, minQualLen, if_debug=if_debug
+        gene, pos1_tlen_to_count, minQualLen, if_debug=if_print
     )
-
+    
     if len(transcript_to_fragLen) == 0:
-        # print("empty fragLen list!")
+        print("empty fragLen list!")
         continue
-
     recorded_genes += 1
-    # if if_print:
-    #     print(
-    #         "%s,%s,#reads: %s,total #variants in VCF: %d"
-    #         % (region_str, geneid, numReads, len(variants))
-    #     )
-
+    ######## write pat/mat transcripts
     maternal, transcriptIdToBiSNPpos, transcript_num = makeAltTranscript(
-        gene, 1, variants
+        gene, 1, variants,if_print
     )
     paternal, transcriptIdToBiSNPpos, _ = makeAltTranscript(gene, 0, variants)
     qual_idx = 0
-    list_fragLen = []
 
     candidate_transcripts = list(transcript_to_fragLen.keys())
-    # if if_print:
-    #     if target_gene is not None:
-    #         print(
-    #             f">>>>>>>>>>>>>>>>\n>>>>>>>>>>>>>>>>{len(transcript_to_fragLen)} available transcripts:"
-    #         )
-    #         for trans in candidate_transcripts:
-    #             print(
-    #                 f"{trans.getID()} CDS region: {trans.getCDSbeginEnd()} transcript region: {trans.getBegin()},{trans.getEnd()}"
-    #             )
-    #             print(f"{trans.getID()}-{transcript_to_fragLen[trans]}")
+    if if_print:
+        if target_gene is not None:
+            print(
+                f">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> {len(transcript_to_fragLen)} available transcripts:"
+            )
+            for trans in candidate_transcripts:
+                print(
+                    f"transcript {trans.getID()} CDS region: {trans.getCDSbeginEnd()}; transcript region: {trans.getBegin()}-{trans.getEnd()}; valid fragLen {transcript_to_fragLen[trans]}"
+                )
+        for j in transcriptIdToBiSNPpos:
+            print(f">>>>> transcript ID {j},hetSNPs: {transcriptIdToBiSNPpos[j]}")
 
     candidate_transcript_pairs = [
         (x, next(filter(lambda y: y.getID() == x.getID(), maternal.transcripts)))
@@ -525,23 +522,30 @@ for gene in genes:
     ]
 
     numReads = int(float(DEPTH / minQualLen) * length)
+    if if_print:
+        print(
+            f">>>>> gene id: {geneid}, gene region: {region_str}, #reads: {numReads},total #variants in VCF: {len(variants)}"
+        )
+    ##########################################################################
     for i in range(numReads):
         patTranscript, matTranscript = random.choice(candidate_transcript_pairs)
         transcript_length = matTranscript.getLength()
         frag_lens = transcript_to_fragLen[patTranscript]
         min_frag_len = min(frag_lens)
-        # if if_print:
-        #     if target_gene is not None:
-        #         print(">>>>>>>>>>>>>>>>\n>>>>>>>>>>>>>>>> print candidate transcripts")
-        #         print(
-        #             f"{i}-th reads, transcript {patTranscript.getID()} length: {transcript_length}, fragLen list: {frag_lens}, transcript CDS begin-end: {patTranscript.getCDSbeginEnd()}, transcript begin-end: {patTranscript.getBegin()}-{patTranscript.getEnd()}"
-        #         )
 
         assert min_frag_len <= transcript_length
         fragLen = random.choice(frag_lens)
 
         candidate_quals = list(filter(lambda x: len(x) <= fragLen, qual_strs))
         assert len(candidate_quals) > 0
+
+        if if_print:
+            if target_gene is not None:
+                print("")
+                print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> simulated candidate transcripts")
+                print(
+                    f"{i}-th reads, randomly chosen transcript {patTranscript.getID()},transcript length: {transcript_length}, randomly chosen fragLen: {fragLen}, chosen quality string length: {len(candidate_quals)}"
+                )
 
         fwd_qual = random.choice(candidate_quals)
         rev_qual = random.choice(candidate_quals)
@@ -586,18 +590,18 @@ for gene in genes:
             else:
                 pat += 1
             identifier_random = "@SIM-" + str(nextReadID) + "-" + str(geneid)
-            # if if_print:
-            #     print(
-            #         "%s,if maternal: %s,rec1 quality string length %s, forward strand length %s, rec2 quality strand length %s, reverse strand length %s!! "
-            #         % (
-            #             identifier_random,
-            #             str(if_mat),
-            #             len(fwd_qual),
-            #             fwd_LEN,
-            #             len(rev_qual),
-            #             rev_LEN,
-            #         )
-            #     )
+            if if_print:
+                print(
+                    "%s,if maternal: %s,rec1 quality string length %s, forward strand length %s, rec2 quality strand length %s, reverse strand length %s!! "
+                    % (
+                        identifier_random,
+                        str(if_mat),
+                        len(fwd_qual),
+                        fwd_LEN,
+                        len(rev_qual),
+                        rev_LEN,
+                    )
+                )
             # random decision on maternal / paternal
             if if_mat is True:
                 randomSeq = matSeq
@@ -704,10 +708,13 @@ for gene in genes:
             with open(out + "/trans_end2", "wb") as fp:
                 pickle.dump(list_end2, fp)
     ratio=mat/(pat+mat)
-    list_ratio.append(ratio)
+    list_ratio.append((pat, mat, ratio))
+if if_print:
+    print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> ratio of #mat/#total")
+print(list_ratio)
 
 if chromosome is not None:
-    with open(out_path + "/mat_ratio_"+str(chromosome)+".pkl", "wb") as fp:
+    with open(out + "/mat_ratio_"+str(chromosome)+".pkl", "wb") as fp:
         pickle.dump(list_ratio, fp)
 
 if target_gene is not None:
