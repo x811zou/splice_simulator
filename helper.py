@@ -245,7 +245,8 @@ def print_verbose(s):
 
 def posTlen_to_fragLen(gene, pos1_tlen_to_count, readLen, if_debug=False):
     transcript_to_mapped_lengths = {}
-
+    if if_debug:
+        print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>  filtering : valid start/end pos of SAM records map to transcript")
     for i in range(gene.getNumTranscripts()):
         transcript = gene.getIthTranscript(i)
         mapped_lengths = []
@@ -261,18 +262,19 @@ def posTlen_to_fragLen(gene, pos1_tlen_to_count, readLen, if_debug=False):
 
         for pos1_tlen, count in pos1_tlen_to_count.items():
             pos1, tlen = pos1_tlen
-
+            # get transcript coordiante position
             begin = mapPos(pos1)
+            # filter out sites whose both start/end could not map to transcript
             if begin < 0:
                 continue
             end = mapPos(pos1 + tlen)
             if end < 0:
                 continue
             mapped_length = abs(end - begin)
-            # if if_debug:
-            #     print(
-            #         f"transcript {i}:{pos1_tlen} mapped start,end: ({begin},{end}) fragLen {mapped_length}"
-            #     )
+            if if_debug:
+                print(
+                    f"transcript {i+1} - {transcript.getID()}:{pos1_tlen} mapped start,end: ({begin},{end}) fragLen {mapped_length}"
+                )
             if mapped_length < readLen:
                 continue
 
