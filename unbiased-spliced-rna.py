@@ -55,7 +55,7 @@ matches = 0  # number of sites containing alt or ref allele in transcript
 mismatches = 0  # number of sites having neither ref nor alt allele in transcript
 
 
-def makeAltTranscript(gene, haplotype, variants,if_print=False):
+def makeAltTranscript(gene, haplotype, variants, if_print=False):
     #########
     # this function is used to create a set of REF copy of a gene transcrips, or ALT copy
     # REF copy (haplotype == 0): replace the REF allele for variants in ref gencode filtered transcript to actual REF allele in VCF
@@ -73,13 +73,17 @@ def makeAltTranscript(gene, haplotype, variants,if_print=False):
     transcriptIdToBiSNPpos = defaultdict(set)
     transcript_num = 0
     if if_print:
-        print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> simulation ")
+        print(
+            ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> simulation "
+        )
     # loop through each ref gencode transcript, create a REF/ALT copy based on VCF
     for transcript in altGene.transcripts:
         transcript_num += 1
         num = 0
         if if_print:
-            print(f"transcript {transcript_num} - {transcript.getID()}: len {len(transcript.sequence)}")
+            print(
+                f"transcript {transcript_num} - {transcript.getID()}: len {len(transcript.sequence)}"
+            )
         array = list(transcript.sequence)
         # loop through each bi-allelic SNP from VCF
         for variant in variants:
@@ -87,41 +91,38 @@ def makeAltTranscript(gene, haplotype, variants,if_print=False):
             if trans_pos < 0:
                 continue
             if if_print:
-                print(f"transcript {transcript_num} - {transcript.getID()}: genomic pos {variant.genomicPos} - trans pos: {trans_pos}")
+                print(
+                    f"transcript {transcript_num} - {transcript.getID()}: genomic pos {variant.genomicPos} - trans pos: {trans_pos}"
+                )
             if variant.genotype[0] != variant.genotype[1]:
                 transcriptIdToBiSNPpos[transcript.getID()].add(variant.genomicPos)
                 num += 1
             refallele_in_ref = array[trans_pos]
-            # sanity check
-            if haplotype == 0:
+            ### sanity check
+            if variant.genotype[haplotype] == 0:
                 allele_in_vcf = variant.ref
-                if (
-                    gene.getStrand() == "-"
-                ):  # reverse the allele if it is in the reverse strand
-                    if_rev = True
-                    allele_in_vcf = Translation.reverseComplement(allele_in_vcf)
-                ### debugging start
-                if if_print:
-                    print(
-                        f">>> ref/pat haplotype simulation {gene.getStrand()} -- VCF: {variant.genotype[0]} | {variant.genotype[1]} - ref:{variant.ref}|alt:{variant.alt}; vs reference: {refallele_in_ref}"
-                    )
-                if allele_in_vcf == refallele_in_ref:
-                    # print("match")
-                    matches += 1
-                else:
-                    # print("mismatch")
-                    mismatches += 1
-                ### debugging end
-            elif haplotype == 1: #if variant.genotype[haplotype] > 0:
+            elif variant.genotype[haplotype] == 1:
                 allele_in_vcf = variant.alt
-                if (
-                    gene.getStrand() == "-"
-                ):  # reverse the allele if it is in the reverse strand
-                    if_rev = True
-                    allele_in_vcf = Translation.reverseComplement(allele_in_vcf)
-            # use REF/ALT allele in VCF to modify the reference transcript
+            else:
+                break
+            if (
+                gene.getStrand() == "-"
+            ):  # reverse the allele if it is in the reverse strand
+                if_rev = True
+                allele_in_vcf = Translation.reverseComplement(allele_in_vcf)
+            ### debugging start
+            if if_print:
+                print(
+                    f">>> haplotype {haplotype} simulation {gene.getStrand()} -- VCF: {variant.genotype[0]} | {variant.genotype[1]} - ref:{variant.ref}|alt:{variant.alt}; vs reference: {refallele_in_ref}"
+                )
+            if allele_in_vcf == refallele_in_ref:
+                # print("match")
+                matches += 1
+            else:
+                # print("mismatch")
+                mismatches += 1
+            ### debugging end
             array[trans_pos] = allele_in_vcf
-
             ##########################
             if if_print:
                 print(
@@ -144,8 +145,10 @@ def makeAltTranscript(gene, haplotype, variants,if_print=False):
                 % (transcript_num, num)
             )
             print(" ")
-    if if_print: 
-        print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> ")
+    if if_print:
+        print(
+            ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> "
+        )
     return altGene, transcriptIdToBiSNPpos, transcript_num
 
 
@@ -324,7 +327,7 @@ if if_print:
         print(f"output file names {outFile1} {outFile2}")
     else:
         print(f"output file names {outFile1} {outFile2}")
-    
+
 out_path_folder = out_path
 Path(out_path_folder).mkdir(parents=True, exist_ok=True)
 
@@ -430,7 +433,7 @@ list_ratio = []
 if_debug = False
 
 for gene in genes:
-    mat = 0 
+    mat = 0
     pat = 0
     region_str = get_region_str(gene)
     chrN = gene.getSubstrate()
@@ -486,19 +489,19 @@ for gene in genes:
             pos1_tlen_to_count[x] + 1 if x in pos1_tlen_to_count else 1
         )
     # calculate the minimum quality length of quality string for this gene, maybe 75
-    minQualLen = min([len(x) for x in qual_strs])  
-    ######## filter1: loop through each transcript, to 
+    minQualLen = min([len(x) for x in qual_strs])
+    ######## filter1: loop through each transcript, to
     transcript_to_fragLen = posTlen_to_fragLen(
         gene, pos1_tlen_to_count, minQualLen, if_debug=if_print
     )
-    
+
     if len(transcript_to_fragLen) == 0:
         print("empty fragLen list!")
         continue
     recorded_genes += 1
     ######## write pat/mat transcripts
     maternal, transcriptIdToBiSNPpos, transcript_num = makeAltTranscript(
-        gene, 1, variants,if_print
+        gene, 1, variants, if_print
     )
     paternal, transcriptIdToBiSNPpos, _ = makeAltTranscript(gene, 0, variants)
     qual_idx = 0
@@ -542,7 +545,9 @@ for gene in genes:
         if if_print:
             if target_gene is not None:
                 print("")
-                print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> simulated candidate transcripts")
+                print(
+                    ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> simulated candidate transcripts"
+                )
                 print(
                     f"{i}-th reads, randomly chosen transcript {patTranscript.getID()},transcript length: {transcript_length}, randomly chosen fragLen: {fragLen}, chosen quality string length: {len(candidate_quals)}"
                 )
@@ -707,14 +712,16 @@ for gene in genes:
                 pickle.dump(list_start2, fp)
             with open(out + "/trans_end2", "wb") as fp:
                 pickle.dump(list_end2, fp)
-    ratio=mat/(pat+mat)
+    ratio = mat / (pat + mat)
     list_ratio.append((pat, mat, ratio))
 if if_print:
-    print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> ratio of #mat/#total")
+    print(
+        ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> ratio of #mat/#total"
+    )
 print(list_ratio)
 
 if chromosome is not None:
-    with open(out + "/mat_ratio_"+str(chromosome)+".pkl", "wb") as fp:
+    with open(out + "/mat_ratio_" + str(chromosome) + ".pkl", "wb") as fp:
         pickle.dump(list_ratio, fp)
 
 if target_gene is not None:
