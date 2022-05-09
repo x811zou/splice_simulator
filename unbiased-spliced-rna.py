@@ -76,7 +76,7 @@ def makeAltTranscript(gene, haplotype, variants, if_print=False):
         print(
             ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> simulation "
         )
-    # loop through each ref gencode transcript, create a REF/ALT copy based on VCF
+    # loop through each ref gencode transcript, create a mat/pat haplotype based on VCF
     for transcript in altGene.transcripts:
         transcript_num += 1
         num = 0
@@ -523,7 +523,7 @@ for gene in genes:
         (x, next(filter(lambda y: y.getID() == x.getID(), maternal.transcripts)))
         for x in candidate_transcripts
     ]
-
+    # read coverage per SNP we want * length of the longest transcript / minimum quality string length (for the gene)
     numReads = int(float(DEPTH / minQualLen) * length)
     if if_print:
         print(
@@ -554,8 +554,6 @@ for gene in genes:
 
         fwd_qual = random.choice(candidate_quals)
         rev_qual = random.choice(candidate_quals)
-
-        list_fragLen.append(fragLen)
         # simulate reads for paternal and maternal copy
         (
             patSeq,
