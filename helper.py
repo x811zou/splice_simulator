@@ -133,7 +133,7 @@ def tabix_regions(
     return region_to_results
 
 
-def variant_processor(line):
+def variant_processor_hets(line):
     #########
     # this function is used to fetch variants from .vcf
     #########
@@ -151,6 +151,21 @@ def variant_processor(line):
         return None
     return variant
 
+def variant_processor_SNPs(line):
+    #########
+    # this function is used to fetch variants from .vcf
+    #########
+    fields = line.rstrip().split()
+    if len(fields) != 10:
+        raise Exception("Expecting 10 fields in VCF file")
+
+    variant = Variant(fields)
+    if not variant.isOK():
+        return None
+    # not het and not homoalt
+    if not (len(variant.ref) == 1 and len(variant.alt) == 1):
+        return None
+    return variant
 
 def sam_data_processor(line):
     #########

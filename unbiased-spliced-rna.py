@@ -19,7 +19,8 @@ from helper import (
     posTlen_to_fragLen,
     sam_data_processor,
     tabix_regions,
-    variant_processor,
+    variant_processor_SNPs,
+    variant_processor_hets,
     simRead_patmat,
     run2bitBatch,
     constructTwoBitInput,
@@ -215,11 +216,16 @@ parser.add_argument(
 )
 
 parser.add_argument("-v", "--verbose", action="store_true", help="print lots of info")
+parser.add_argument("-snp", "--allSNPs", action="store_true", help="include all SNPs")
+
 args = parser.parse_args()
 if args.chr:
     print(f"single chromosome mode turned on : {args.chr}")
 if args.verbose:
     print(f"{datetime.now()} printing mode turned on")
+    print(args)
+if args.allSNPs:
+    print(f"{datetime.now()} all SNPs mode turned on")
     print(args)
 
 twoBitDir = args.twobit
@@ -236,9 +242,16 @@ outFile2 = args.out2
 outPrefix = args.out_prefix
 if_random = args.random
 if_print = args.verbose
+SNPs = args.allSNPs
 
 random.seed(args.seed)
 print(f"simulation seed : {args.seed}", flush=True)
+if SNPs:
+    variant_processor_chosen=variant_processor_SNPs
+    print(f"simulation sites : all SNPs", flush=True)
+else:
+    variant_processor_chosen=variant_processor_hets
+    print(f"simulation sites : all hets", flush=True)
 
 if_debug = False
 if target_gene is not None:
@@ -403,8 +416,9 @@ print(
 ####### extract regions for genes from VCF file
 # dict2: gene_to_variants {gene region}:{records from VCF}
 #######
+
 region_str_to_variants = tabix_regions(
-    regions, variant_processor, vcfFile, comment_char="#"
+    regions, variant_processor_chosen, vcfFile, comment_char="#"
 )
 
 ####### extract sam data
@@ -710,13 +724,16 @@ for gene in genes:
                 pickle.dump(list_start2, fp)
             with open(out + "/trans_end2", "wb") as fp:
                 pickle.dump(list_end2, fp)
+        else:
+            out = out_path
     ratio = mat / (pat + mat)
     list_ratio.append((pat, mat, ratio))
-if if_print:
+
+if target_gene is not None:
     print(
         ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> ratio of #mat/#total"
     )
-print(list_ratio)
+    print(list_ratio)
 
 if chromosome is not None:
     with open(out + "/mat_ratio_" + str(chromosome) + ".pkl", "wb") as fp:
