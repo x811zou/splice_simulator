@@ -55,104 +55,84 @@ rex = Rex()
 matches = 0  # number of sites containing alt or ref allele in transcript
 mismatches = 0  # number of sites having neither ref nor alt allele in transcript
 
-
-def makeAltTranscript(gene, haplotype, variants, if_print=False):
+def modifyTranscript(gene, variants, if_print=False):
     #########
-    # this function is used to create a set of REF copy of a gene transcrips, or ALT copy
-    # REF copy (haplotype == 0): replace the REF allele for variants in ref gencode filtered transcript to actual REF allele in VCF
-    # ALT copy (haplotype == 1): replace the REF allele for variants in ref gencode filtered transcript to actual ALT allele in VCF
+    # this function is used to create a set of paternal/maternal copy of a gene transcrips
+    # Paternal haplotype sequence (haplotype == 0): replace the allele for variants in ref gencode filtered transcript to actual ALT allele in VCF if first genotype column [0] is 1
+    # Maternal haplotype sequence (haplotype == 1): replace the allele for variants in ref gencode filtered transcript to actual ALT allele in VCF if second genotype column [1] is 1
     # allele_in_vcf : allele in VCF
     # refallele_in_ref : allele in reference transcript (gencode GTF hg19.v19)
     # match: allele in gencode ref transcript (reversed if in reverse strand) MATCH the allele in VCF
-    # mismatch: ... NOT MATCH ...
+    # mismatch: ... NOT MATCH in ref allele of variant...
     #########
-    if haplotype == 0:
-        global matches
-        global mismatches
-    altGene = copy.deepcopy(gene)
+    # for pat transcript only
+    global matches
+    global mismatches
     transcriptIdToBiSNPcount = {}
     transcriptIdToBiSNPpos = defaultdict(set)
     transcript_num = 0
-    if if_print:
-        print(
-            ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> simulation "
-        )
-    # loop through each ref gencode transcript, create a mat/pat haplotype based on VCF
-    for transcript in altGene.transcripts:
+    debug_print(f">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> modifying transcript: ")
+    patGene = copy.deepcopy(gene)
+    matGene = copy.deepcopy(gene)
+    # loop through each ref gencode transcript, create a mat/pat haplotype based on VCF, genotype[0] for pat, genotype[1] for mat
+    for patTranscript,matTranscript in zip(patGene.transcripts,matGene.transcripts):
         transcript_num += 1
         num = 0
-        if if_print:
-            print(
-                f"transcript {transcript_num} - {transcript.getID()}: len {len(transcript.sequence)}"
-            )
-        array = list(transcript.sequence)
+        debug_print(f"transcript {transcript_num} - {transcript.getID()}: len {len(transcript.sequence)}")
+        patSeq = list(patTranscript.sequence)
+        matSeq = list(matTranscript.sequence)
         # loop through each bi-allelic SNP from VCF
         for variant in variants:
-            trans_pos = transcript.mapToTranscript(variant.genomicPos)
+            trans_pos = patTranscript.mapToTranscript(variant.genomicPos)
             if trans_pos < 0:
                 continue
-            if if_print:
-                print(
-                    f"transcript {transcript_num} - {transcript.getID()}: genomic pos {variant.genomicPos} - trans pos: {trans_pos}"
-                )
+            debug_print(f"transcript {transcript_num} - {transcript.getID()}: genomic pos {variant.genomicPos} - trans pos: {trans_pos} - {variant.genotype[0]} | {variant.genotype[1]} - ref {variant.ref} | alt {variant.alt}")
             if variant.genotype[0] != variant.genotype[1]:
-                transcriptIdToBiSNPpos[transcript.getID()].add(variant.genomicPos)
+                transcriptIdToBiSNPpos[patTranscript.getID()].add(variant.genomicPos)
                 num += 1
-            refallele_in_ref = array[trans_pos]
-            ### sanity check
-            if variant.genotype[haplotype] == 0:
-                allele_in_vcf = variant.ref
-            elif variant.genotype[haplotype] == 1:
-                allele_in_vcf = variant.alt
-            else:
-                break
+            refallele_in_ref = patSeq[trans_pos]
+            refallele_in_vcf = variant.ref
+            altallele_in_vcf = variant.alt
             if (
                 gene.getStrand() == "-"
             ):  # reverse the allele if it is in the reverse strand
                 if_rev = True
-                allele_in_vcf = Translation.reverseComplement(allele_in_vcf)
+                refallele_in_vcf = Translation.reverseComplement(refallele_in_vcf)
+                altallele_in_vcf = Translation.reverseComplement(altallele_in_vcf)
             ### debugging start
-            if if_print:
-                print(
-                    f">>> haplotype {haplotype} simulation {gene.getStrand()} -- VCF: {variant.genotype[0]} | {variant.genotype[1]} - ref:{variant.ref}|alt:{variant.alt}; vs reference: {refallele_in_ref}"
-                )
-            if allele_in_vcf == refallele_in_ref:
-                # print("match")
+            #debug_print(f">>> information {gene.getStrand()} -- VCF: {variant.genotype[0]} | {variant.genotype[1]} - ref:{refallele_in_vcf} | alt:{altallele_in_vcf}; vs reference: {refallele_in_ref}, if reverse strand: {if_rev}")
+            if refallele_in_vcf == refallele_in_ref:
+                #debug_print(f"match")
                 matches += 1
             else:
-                # print("mismatch")
+                #debug_print(f"mismatch")
                 mismatches += 1
             ### debugging end
-            array[trans_pos] = allele_in_vcf
+            if variant.genotype[0] == 0:
+                patSeq[trans_pos] = refallele_in_vcf
+            else:
+                patSeq[trans_pos] = altallele_in_vcf
+            if variant.genotype[1] == 0:
+                matSeq[trans_pos] = refallele_in_vcf
+            else:
+                matSeq[trans_pos] = altallele_in_vcf
+            debug_print(f">>> simulation {gene.getStrand()} -- VCF: {variant.genotype[0]} | {variant.genotype[1]} - ref:{refallele_in_vcf} | alt:{altallele_in_vcf}; vs reference: {refallele_in_ref} - pat seq :{patSeq[trans_pos]} | mat seq :{matSeq[trans_pos]}")
             ##########################
-            if if_print:
-                print(
-                    "            > if reverse strand: %s, haplotype: %s, in ref genome %s, in VCF: %s, ref: %s, alt: %s, write_in_sequence: %s"
-                    % (
-                        str(if_rev),
-                        haplotype,
-                        refallele_in_ref,
-                        allele_in_vcf,
-                        variant.ref,
-                        variant.alt,
-                        array[trans_pos],
-                    )
-                )
-        transcript.sequence = "".join(array)
+        patTranscript.sequence = "".join(patSeq)
+        matTranscript.sequence = "".join(matSeq)
         transcriptIdToBiSNPcount[transcript.getID()] = num
-        if if_print:
-            print(
-                ">>>>>> %dth transcript, in total %d bi-allelic SNP"
+        debug_print(f">>>>>> %dth transcript, in total %d bi-allelic SNP"
                 % (transcript_num, num)
             )
-            print(" ")
-    if if_print:
-        print(
-            ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> "
+        debug_print(f"")
+    debug_print(f">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
         )
-    return altGene, transcriptIdToBiSNPpos, transcript_num
+    debug_print(transcriptIdToBiSNPpos)
+    return patGene,matGene, transcriptIdToBiSNPpos, transcript_num
 
-
+# no modification yet
+def modifyTranscript_test(gene, variants, if_print=False): 
+    None
 # ============================================
 # DEPENDENCIES:
 #   module load htslib
@@ -202,11 +182,17 @@ parser.add_argument(
 )
 parser.add_argument("--chr", help="specific chromosome to simulate")
 parser.add_argument("--gene", help="specific gene to simulate")
+# parser.add_argument(
+#     "-r",
+#     "--random",
+#     action="store_true",
+#     help="generate reads randomly from either haplotype",
+# )
 parser.add_argument(
-    "-r",
-    "--random",
+    "-t",
+    "--test",
     action="store_true",
-    help="generate reads randomly from either haplotype",
+    help="generate reads into PAT - ref /MAT - alt haplotype",
 )
 parser.add_argument(
     "--seed",
@@ -214,20 +200,74 @@ parser.add_argument(
     default=random.randrange(sys.maxsize),
     type=int,
 )
-
 parser.add_argument("-v", "--verbose", action="store_true", help="print lots of info")
 parser.add_argument("-snp", "--allSNPs", action="store_true", help="include all SNPs")
 
 args = parser.parse_args()
+#if_random = args.random
+if_random = True
+if if_random:
+    print(
+        f"{datetime.now()} RANDOMLY generate pat/mat reads for each read ...",
+        file=sys.stderr,
+        flush=True,
+    )
+else:
+    print(
+        f"{datetime.now()} EQUALLY generate pat/mat reads for each read/2...", file=sys.stderr, flush=True
+    )
+#
 if args.chr:
-    print(f"single chromosome mode turned on : {args.chr}")
-if args.verbose:
-    print(f"{datetime.now()} printing mode turned on")
-    print(args)
-if args.allSNPs:
-    print(f"{datetime.now()} all SNPs mode turned on")
-    print(args)
-
+    print(f"{datetime.now()} CHRomosome mode turned on for {args.chr}")
+else:
+    print(f"{datetime.now()} default: looking at all genes")
+#
+if_print = args.verbose
+if if_print:
+    print(
+        f"{datetime.now()} Yes, print out simulation logs for debugging purpose...",
+        file=sys.stderr,
+        flush=True,
+    )
+else:
+    print(
+        f"{datetime.now()} Not printing out simulation logs...",
+        file=sys.stderr,
+        flush=True,
+    )
+if if_print:
+	debug_print = print
+else:
+	debug_print = lambda *args: None
+#
+SNPs = args.allSNPs
+if SNPs:
+    variant_processor_chosen=variant_processor_SNPs
+    print(
+        f"{datetime.now()} simulation sites for all SNPs...",
+        file=sys.stderr,
+        flush=True,
+    )
+else:
+    variant_processor_chosen=variant_processor_hets
+    print(
+        f"{datetime.now()} simulation sites for all hets...",
+        file=sys.stderr,
+        flush=True,
+    )
+#
+if args.test:
+    print(f"{datetime.now()} testing mode turned on, pat haplotype only has ref, mat haplotype only has alt")
+else:
+    print(f"{datetime.now()} default setting: each haplpotype has both ref/alt allele")
+if_test = args.test
+if if_test:
+    makingTranscript = modifyTranscript_test
+else:
+    makingTranscript = modifyTranscript
+#
+print(args)
+#
 twoBitDir = args.twobit
 genome2bit = args.genome
 gffFile = args.gff
@@ -240,48 +280,13 @@ DEPTH = args.read_depth
 outFile1 = args.out1
 outFile2 = args.out2
 outPrefix = args.out_prefix
-if_random = args.random
-if_print = args.verbose
-SNPs = args.allSNPs
-
 random.seed(args.seed)
-print(f"simulation seed : {args.seed}", flush=True)
-if SNPs:
-    variant_processor_chosen=variant_processor_SNPs
-    print(f"simulation sites : all SNPs", flush=True)
-else:
-    variant_processor_chosen=variant_processor_hets
-    print(f"simulation sites : all hets", flush=True)
-
-if_debug = False
-if target_gene is not None:
-    if_print = True
-    if_debug = True
-
-if if_print:
-    print(
-        f"{datetime.now()} Yes, print out simulation logs...",
-        file=sys.stderr,
-        flush=True,
-    )
-else:
-    print(
-        f"{datetime.now()} Not print out simulation logs...",
-        file=sys.stderr,
-        flush=True,
-    )
-
-if if_random:
-    print(
-        f"{datetime.now()} generate RANDOM pat/mat reads...",
-        file=sys.stderr,
-        flush=True,
-    )
-else:
-    print(
-        f"{datetime.now()} generate EQUAL pat/mat reads...", file=sys.stderr, flush=True
-    )
-
+#
+print(
+    f"{datetime.now()} simulation seed : {args.seed}",
+    file=sys.stderr,
+    flush=True,
+)
 
 # Load GFF and fragment lengths
 gffReader = GffTranscriptReader()
@@ -412,6 +417,8 @@ print(
     file=sys.stderr,
     flush=True,
 )
+if target_gene is not None:
+    debug_print(f"target gene region: {regions}")
 
 ####### extract regions for genes from VCF file
 # dict2: gene_to_variants {gene region}:{records from VCF}
@@ -444,7 +451,6 @@ start_time_ns = time.perf_counter_ns()
 if target_gene is not None:
     list_fragLen = []
 list_ratio = []
-if_debug = False
 
 for gene in genes:
     mat = 0
@@ -461,7 +467,7 @@ for gene in genes:
         list_end2 = []
         transcript = gene.longestTranscript()
         transcript.exons = transcript.getRawExons()
-        print(
+        debug_print(
             f"DEBUG... {geneid}, gene region: {region_str}, longest transcript length: {length}"
         )
     # DEBUGGING end
@@ -478,17 +484,18 @@ for gene in genes:
     processed_genes += 1
 
     if not region_str in region_str_to_sam_data:
-        if if_print:
-            print(f"{chrN},gene: {geneid}, no mapped reads in SAM, skip")
+        debug_print(f"{chrN},gene: {geneid}, no mapped reads in SAM, skip")
         not_in_sam += 1
         continue
     if not region_str in region_str_to_variants:
-        if if_print:
-            print(f"{chrN},gene: {geneid}, no variants/records in VCF, skip")
+        debug_print(f"{chrN},gene: {geneid}, no variants/records in VCF, skip")
         in_sam_not_in_vcf += 1
         continue
     # gene_to_variants {gene region}:{records from VCF}
     variants = region_str_to_variants[region_str]
+    if all([not x.isHet() for x in variants]):
+        debug_print("all SNPs are homozygous")
+        continue
     # gene_to_qualityStr {gene region}:{quality string score from sam.gz}
     sam_data = region_str_to_sam_data[region_str]
     # within each gene, we obtain the reads information from SAM file
@@ -506,7 +513,7 @@ for gene in genes:
     minQualLen = min([len(x) for x in qual_strs])
     ######## filter1: loop through each transcript, to
     transcript_to_fragLen = posTlen_to_fragLen(
-        gene, pos1_tlen_to_count, minQualLen, if_debug=if_print
+        gene, pos1_tlen_to_count, minQualLen, if_print
     )
 
     if len(transcript_to_fragLen) == 0:
@@ -514,33 +521,31 @@ for gene in genes:
         continue
     recorded_genes += 1
     ######## write pat/mat transcripts
-    maternal, transcriptIdToBiSNPpos, transcript_num = makeAltTranscript(
-        gene, 1, variants, if_print
+    paternal,maternal,transcriptIdToBiSNPpos, transcript_num = makingTranscript(
+        gene, variants, if_print
     )
-    paternal, transcriptIdToBiSNPpos, _ = makeAltTranscript(gene, 0, variants)
     qual_idx = 0
-
+    print(transcript_to_fragLen)
     candidate_transcripts = list(transcript_to_fragLen.keys())
-    if if_print:
-        if target_gene is not None:
-            print(
+    print(candidate_transcripts)
+    if target_gene is not None:
+        debug_print(
                 f">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> {len(transcript_to_fragLen)} available transcripts:"
             )
-            for trans in candidate_transcripts:
-                print(
-                    f"transcript {trans.getID()} CDS region: {trans.getCDSbeginEnd()}; transcript region: {trans.getBegin()}-{trans.getEnd()}; valid fragLen {transcript_to_fragLen[trans]}"
-                )
+        for trans in candidate_transcripts:
+            print(
+                f"transcript {trans.getID()} CDS region: {trans.getCDSbeginEnd()}; transcript region: {trans.getBegin()}-{trans.getEnd()}; valid fragLen {transcript_to_fragLen[trans]}"
+            )
         for j in transcriptIdToBiSNPpos:
             print(f">>>>> transcript ID {j},hetSNPs: {transcriptIdToBiSNPpos[j]}")
-
     candidate_transcript_pairs = [
         (x, next(filter(lambda y: y.getID() == x.getID(), maternal.transcripts)))
         for x in candidate_transcripts
     ]
     # read coverage per SNP we want * length of the longest transcript / minimum quality string length (for the gene)
     numReads = int(float(DEPTH / minQualLen) * length)
-    if if_print:
-        print(
+    sys.exit()
+    debug_print(
             f">>>>> gene id: {geneid}, gene region: {region_str}, #reads: {numReads},total #variants in VCF: {len(variants)}"
         )
     ##########################################################################
@@ -586,7 +591,7 @@ for gene in genes:
             fwd_qual,
             rev_qual,
             fragLen,
-            if_print=if_debug,
+            if_print,
         )
         if target_gene is not None:
             list_fragLen.append(fragLen)
