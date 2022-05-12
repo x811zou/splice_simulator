@@ -202,12 +202,12 @@ parser.add_argument(
 )
 parser.add_argument("--chr", help="specific chromosome to simulate")
 parser.add_argument("--gene", help="specific gene to simulate")
-parser.add_argument(
-    "-r",
-    "--random",
-    action="store_true",
-    help="generate reads randomly from either haplotype",
-)
+# parser.add_argument(
+#     "-r",
+#     "--random",
+#     action="store_true",
+#     help="generate reads randomly from either haplotype",
+# )
 parser.add_argument(
     "--seed",
     help="random seed for simulation",
@@ -240,7 +240,7 @@ DEPTH = args.read_depth
 outFile1 = args.out1
 outFile2 = args.out2
 outPrefix = args.out_prefix
-if_random = args.random
+# if_random = args.random
 if_print = args.verbose
 SNPs = args.allSNPs
 
@@ -270,7 +270,7 @@ else:
         file=sys.stderr,
         flush=True,
     )
-
+if_random = True
 if if_random:
     print(
         f"{datetime.now()} generate RANDOM pat/mat reads...",
