@@ -55,6 +55,75 @@ rex = Rex()
 matches = 0  # number of sites containing alt or ref allele in transcript
 mismatches = 0  # number of sites having neither ref nor alt allele in transcript
 
+def modifyTranscript_test(gene, variants, if_print=False):
+    #########
+    # this function is used to create a set of paternal/maternal copy of a gene transcrips
+    # Paternal haplotype sequence (haplotype == 0): replace the allele for variants in ref gencode filtered transcript to actual ALT allele in VCF if first genotype column [0] is 1
+    # Maternal haplotype sequence (haplotype == 1): replace the allele for variants in ref gencode filtered transcript to actual ALT allele in VCF if second genotype column [1] is 1
+    # allele_in_vcf : allele in VCF
+    # refallele_in_ref : allele in reference transcript (gencode GTF hg19.v19)
+    # match: allele in gencode ref transcript (reversed if in reverse strand) MATCH the allele in VCF
+    # mismatch: ... NOT MATCH in ref allele of variant...
+    #########
+    # for pat transcript only
+    global matches
+    global mismatches
+    transcriptIdToBiSNPcount = {}
+    transcriptIdToBiSNPpos = defaultdict(set)
+    transcript_num = 0
+    debug_print(f">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> modifying transcript: ")
+    patGene = copy.deepcopy(gene)
+    matGene = copy.deepcopy(gene)
+    # loop through each ref gencode transcript, create a mat/pat haplotype based on VCF, genotype[0] for pat, genotype[1] for mat
+    for patTranscript,matTranscript in zip(patGene.transcripts,matGene.transcripts):
+        transcript_num += 1
+        num = 0
+        debug_print(f"transcript {transcript_num} - {patTranscript.getID()}: len {len(patTranscript.sequence)}")
+        patSeq = list(patTranscript.sequence)
+        matSeq = list(matTranscript.sequence)
+        # loop through each bi-allelic SNP from VCF
+        for variant in variants:
+            trans_pos = patTranscript.mapToTranscript(variant.genomicPos)
+            if trans_pos < 0:
+                continue
+            debug_print(f"transcript {transcript_num} - {patTranscript.getID()}: genomic pos {variant.genomicPos} - trans pos: {trans_pos} - {variant.genotype[0]} | {variant.genotype[1]} - ref {variant.ref} | alt {variant.alt}")
+            if variant.genotype[0] != variant.genotype[1]:
+                transcriptIdToBiSNPpos[patTranscript.getID()].add(variant.genomicPos)
+                num += 1
+                refallele_in_ref = patSeq[trans_pos]
+                refallele_in_vcf = variant.ref
+                altallele_in_vcf = variant.alt
+                if (
+                    gene.getStrand() == "-"
+                ):  # reverse the allele if it is in the reverse strand
+                    if_rev = True
+                    refallele_in_vcf = Translation.reverseComplement(refallele_in_vcf)
+                    altallele_in_vcf = Translation.reverseComplement(altallele_in_vcf)
+                ### debugging start
+                #debug_print(f">>> information {gene.getStrand()} -- VCF: {variant.genotype[0]} | {variant.genotype[1]} - ref:{refallele_in_vcf} | alt:{altallele_in_vcf}; vs reference: {refallele_in_ref}, if reverse strand: {if_rev}")
+                if refallele_in_vcf == refallele_in_ref:
+                    #debug_print(f"match")
+                    matches += 1
+                else:
+                    #debug_print(f"mismatch")
+                    mismatches += 1
+                ### debugging end
+                patSeq[trans_pos] = refallele_in_vcf
+                matSeq[trans_pos] = altallele_in_vcf
+                debug_print(f">>> simulation {gene.getStrand()} -- VCF: {variant.genotype[0]} | {variant.genotype[1]} - ref:{refallele_in_vcf} | alt:{altallele_in_vcf}; vs reference: {refallele_in_ref} - pat seq :{patSeq[trans_pos]} | mat seq :{matSeq[trans_pos]}")
+                ##########################
+        patTranscript.sequence = "".join(patSeq)
+        matTranscript.sequence = "".join(matSeq)
+        transcriptIdToBiSNPcount[patTranscript.getID()] = num
+        debug_print(f">>>>>> %dth transcript, in total %d bi-allelic SNP"
+                % (transcript_num, num)
+            )
+        debug_print(f"")
+    debug_print(f">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
+        )
+    debug_print(transcriptIdToBiSNPpos)
+    return patGene,matGene, transcriptIdToBiSNPpos, transcript_num
+
 def modifyTranscript(gene, variants, if_print=False):
     #########
     # this function is used to create a set of paternal/maternal copy of a gene transcrips
@@ -78,7 +147,7 @@ def modifyTranscript(gene, variants, if_print=False):
     for patTranscript,matTranscript in zip(patGene.transcripts,matGene.transcripts):
         transcript_num += 1
         num = 0
-        debug_print(f"transcript {transcript_num} - {transcript.getID()}: len {len(transcript.sequence)}")
+        debug_print(f"transcript {transcript_num} - {patTranscript.getID()}: len {len(patTranscript.sequence)}")
         patSeq = list(patTranscript.sequence)
         matSeq = list(matTranscript.sequence)
         # loop through each bi-allelic SNP from VCF
@@ -86,7 +155,7 @@ def modifyTranscript(gene, variants, if_print=False):
             trans_pos = patTranscript.mapToTranscript(variant.genomicPos)
             if trans_pos < 0:
                 continue
-            debug_print(f"transcript {transcript_num} - {transcript.getID()}: genomic pos {variant.genomicPos} - trans pos: {trans_pos} - {variant.genotype[0]} | {variant.genotype[1]} - ref {variant.ref} | alt {variant.alt}")
+            debug_print(f"transcript {transcript_num} - {patTranscript.getID()}: genomic pos {variant.genomicPos} - trans pos: {trans_pos} - {variant.genotype[0]} | {variant.genotype[1]} - ref {variant.ref} | alt {variant.alt}")
             if variant.genotype[0] != variant.genotype[1]:
                 transcriptIdToBiSNPpos[patTranscript.getID()].add(variant.genomicPos)
                 num += 1
@@ -120,7 +189,7 @@ def modifyTranscript(gene, variants, if_print=False):
             ##########################
         patTranscript.sequence = "".join(patSeq)
         matTranscript.sequence = "".join(matSeq)
-        transcriptIdToBiSNPcount[transcript.getID()] = num
+        transcriptIdToBiSNPcount[patTranscript.getID()] = num
         debug_print(f">>>>>> %dth transcript, in total %d bi-allelic SNP"
                 % (transcript_num, num)
             )
@@ -130,9 +199,6 @@ def modifyTranscript(gene, variants, if_print=False):
     debug_print(transcriptIdToBiSNPpos)
     return patGene,matGene, transcriptIdToBiSNPpos, transcript_num
 
-# no modification yet
-def modifyTranscript_test(gene, variants, if_print=False): 
-    None
 # ============================================
 # DEPENDENCIES:
 #   module load htslib
@@ -181,13 +247,13 @@ parser.add_argument(
     "--out-prefix", help="prefix applied to output file names", default=""
 )
 parser.add_argument("--chr", help="specific chromosome to simulate")
-parser.add_argument("--gene", help="specific gene to simulate")
-# parser.add_argument(
-#     "-r",
-#     "--random",
-#     action="store_true",
-#     help="generate reads randomly from either haplotype",
-# )
+parser.add_argument("--gene", help="specific gene to simulate",default=None)
+parser.add_argument(
+    "-r",
+    "--random",
+    action="store_true",
+    help="generate reads randomly from either haplotype",
+)
 parser.add_argument(
     "-t",
     "--test",
@@ -204,8 +270,7 @@ parser.add_argument("-v", "--verbose", action="store_true", help="print lots of 
 parser.add_argument("-snp", "--allSNPs", action="store_true", help="include all SNPs")
 
 args = parser.parse_args()
-#if_random = args.random
-if_random = True
+if_random = args.random
 if if_random:
     print(
         f"{datetime.now()} RANDOMLY generate pat/mat reads for each read ...",
@@ -214,7 +279,7 @@ if if_random:
     )
 else:
     print(
-        f"{datetime.now()} EQUALLY generate pat/mat reads for each read/2...", file=sys.stderr, flush=True
+        f"{datetime.now()} EQUALLY generate pat/mat reads for each read...", file=sys.stderr, flush=True
     )
 #
 if args.chr:
@@ -525,9 +590,9 @@ for gene in genes:
         gene, variants, if_print
     )
     qual_idx = 0
-    print(transcript_to_fragLen)
+    #print(transcript_to_fragLen)
     candidate_transcripts = list(transcript_to_fragLen.keys())
-    print(candidate_transcripts)
+    #print(candidate_transcripts)
     if target_gene is not None:
         debug_print(
                 f">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> {len(transcript_to_fragLen)} available transcripts:"
@@ -543,8 +608,10 @@ for gene in genes:
         for x in candidate_transcripts
     ]
     # read coverage per SNP we want * length of the longest transcript / minimum quality string length (for the gene)
+    if if_random:
+        DEPTH=int(DEPTH/2)
     numReads = int(float(DEPTH / minQualLen) * length)
-    sys.exit()
+    
     debug_print(
             f">>>>> gene id: {geneid}, gene region: {region_str}, #reads: {numReads},total #variants in VCF: {len(variants)}"
         )
@@ -669,6 +736,8 @@ for gene in genes:
             )
         ################## equal haplotype copy simulator: both mat and pat has same number of reads
         else:
+            mat += 1
+            pat += 1
             identifier_PAT = "@SIM-" + str(nextReadID) + "-" + str(geneid)
             identifier_MAT = "@SIM-" + str(nextReadID + 1) + "-" + str(geneid)
             # if if_print:
