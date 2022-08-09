@@ -206,19 +206,27 @@ def modifyTranscript(gene, variants, if_print=False):
 #   VCF file must be bzipped and indexed with tabix.
 #   VCF must contain only one sample (individual).
 #   VCF must include all sites, including homozygous and heterozygous sites.
-#
-#   N=21
-#   sample="HG00099"
-# 	util_dir=../twobit
-# 	genome=../hg19.2bit
-# 	gtf=../gencode.v19.annotation.level12.gtf
-# 	sam=../${sample}.sam.gz
-# 	vcf=../${sample}.with_chr.content.SNPs.hets.vcf.gz
-# 	out_path=../spliced_reads
-# 	read_depth=100
+# module load htslib
+# module load samtools/1.11-rhel8
+######### 1000 Genome individuals
+# N=1
+# sample="HG00096"
+# util_dir=/hpc/home/bmajoros/twobit
+# genome=/datacommons/allenlab/hg19/hg19.2bit
+# gff=/datacommons/allenlab/hg19/filter/gencode.v19.annotation.level12.gtf
+# sam=/hpc/group/allenlab/scarlett/output/RNAseq/1000Genome/$sample/tmp/simulation_SNPs_even_100/${sample}.sam.gz
+# vcfgz=/hpc/group/allenlab/scarlett/output/RNAseq/1000Genome/$sample/${sample}.no_chr.content.SNPs.filtered.vcf.gz
+# out_path=/hpc/group/allenlab/scarlett/output/RNAseq/1000Genome/$sample/tmp/simulation_test
+# read_depth=1
+######### GSD individuals
+# sample="123375"
+# sam=/hpc/group/allenlab/scarlett/output/RNAseq/GSD/$sample/tmp/simulation_SNPs_even_100/${sample}.sam.gz
+# vcfgz=/hpc/group/allenlab/scarlett/output/RNAseq/GSD/$sample/${sample}.no_chr.content.SNPs.filtered.vcf.gz
+# out_path=/hpc/group/allenlab/scarlett/output/RNAseq/GSD/$sample/tmp/simulation_test
+# read_depth=1
 #
 # EXAMPLE running command:
-# python unbiased-spliced-rna.py $util_dir $genome $gtf $sam $vcf 75 $out_path $read_depth --out_prefix chr${N} --chr chr${N} -r -v
+# python /hpc/group/allenlab/scarlett/script/spliced_simulator/unbiased-spliced-rna-test.py $util_dir $genome $gff $sam $vcfgz $out_path $read_depth --out-prefix chr${N} --chr chr${N} --allSNPs --gene ENSG00000162688.11 -v
 # ============================================
 
 # =========================================================================
@@ -346,6 +354,7 @@ outFile1 = args.out1
 outFile2 = args.out2
 outPrefix = args.out_prefix
 random.seed(args.seed)
+
 #
 print(
     f"{datetime.now()} simulation seed : {args.seed}",
@@ -381,7 +390,6 @@ else:
 
 genes.sort(key=lambda gene: (gene.getSubstrate(), gene.getBegin()))
 print(f"{datetime.now()} done reading GFF...", file=sys.stderr, flush=True)
-
 
 if chromosome is not None:
     print(f"Looking at specific chromosome: {chromosome}")
@@ -492,6 +500,7 @@ if target_gene is not None:
 region_str_to_variants = tabix_regions(
     regions, variant_processor_chosen, vcfFile, comment_char="#"
 )
+# debug_print(region_str_to_variants)
 
 ####### extract sam data
 # dict3: gene_to_qualityStr {gene region}:{quality string score from sam.gz}
@@ -499,6 +508,7 @@ region_str_to_variants = tabix_regions(
 region_str_to_sam_data = tabix_regions(
     regions, sam_data_processor, samFile, comment_char="@", region_prefix="chr"
 )
+# debug_print(region_str_to_sam_data)
 
 #######
 # for each gene, generate reads using quality string from matching genes in SAM.GZ
@@ -810,6 +820,7 @@ if target_gene is not None:
     print(list_ratio)
 
 if chromosome is not None:
+    out = out_path
     with open(out + "/mat_ratio_" + str(chromosome) + ".pkl", "wb") as fp:
         pickle.dump(list_ratio, fp)
 
@@ -825,9 +836,14 @@ print(
 print("")
 print(">> total geneID in gtf: %d" % (num_gene_gtf))
 print(">> total ReadID processed: %d" % (nextReadID))
-print(
-    f">> # matches: {matches}, # mismatches: {mismatches}, percentage of matches: {round(matches/(mismatches+matches),2)*100}%"
-)
+if matches==0:
+    print(
+        f">> # matches: {matches}, # mismatches: {mismatches}"
+    )
+else:
+    print(
+        f">> # matches: {matches}, # mismatches: {mismatches}, percentage of matches: {round(matches/(mismatches+matches),2)*100}%"
+    )
 print(">> total num breaks /gene is shorter than fragment length : %d" % (n_break))
 print(
     f">> # recorded genes : {recorded_genes}, # processed_genes: {processed_genes}, percentage: {round(recorded_genes/processed_genes,2)*100}%"

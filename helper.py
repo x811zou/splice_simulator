@@ -41,6 +41,7 @@ import random
 import copy
 import gzip
 import os
+import re
 import tempfile
 from misc_tools.GffTranscriptReader import GffTranscriptReader
 from misc_tools.Pipe import Pipe
@@ -61,11 +62,24 @@ class Variant:
         self.alt = fields[4]
         genotype = fields[9]
         self.genotype = None
-        if rex.find("(\d)\|(\d)", genotype):
+        if rex.find("(\d)[\|\/\\](\d)", genotype):
             self.genotype = (int(rex[1]), int(rex[2]))
             if self.genotype[0] not in {0, 1} or self.genotype[1] not in {0, 1}:
                 self.genotype = None
-
+        # cat HG00096.no_chr.content.SNPs.filtered.vcf.gz | gunzip | awk '{print $10}' | sort | uniq -c
+            # 74304603 0|0
+            # 1071282 0|1
+            # 1065885 1|0
+            # 1376362 1|1
+        # cat 123375.no_chr.content.SNPs.filtered.vcf.gz | gunzip | awk '{print $10}' | sort | uniq -c
+            # 21194 ./.
+            # 2917072 0/0
+            # 2354362 0/1
+        # cat NA12878.no_chr.content.SNPs.filtered.vcf.gz | gunzip | awk '{print $10}' | sort | uniq -c
+            # 5947 0/1
+            # 976007 0|1
+            # 986082 1|0
+            # 1289007 1|1
     def isOK(self):
         return self.genotype is not None
 
@@ -106,13 +120,13 @@ def tabix_regions(
         region_batch = " ".join(regions)
         command = f"tabix --separate-regions {target_file_path} {region_batch}"
         output = Pipe.run(command)
-
     if len(output) == 0:
         return region_to_results
 
     lines = output.split("\n")
     records = []
     for line in lines:
+        #print(line)
         if len(line) == 0:
             continue
         # start accumulating new region
@@ -158,7 +172,6 @@ def variant_processor_SNPs(line):
     fields = line.rstrip().split()
     if len(fields) != 10:
         raise Exception("Expecting 10 fields in VCF file")
-
     variant = Variant(fields)
     if not variant.isOK():
         return None
