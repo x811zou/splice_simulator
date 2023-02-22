@@ -62,7 +62,7 @@ class Variant:
         self.alt = fields[4]
         genotype = fields[9]
         self.genotype = None
-        if rex.find("(\d)[\|\/\\](\d)", genotype):
+        if rex.find("(\d)[\|\/](\d)", genotype):
             self.genotype = (int(rex[1]), int(rex[2]))
             if self.genotype[0] not in {0, 1} or self.genotype[1] not in {0, 1}:
                 self.genotype = None

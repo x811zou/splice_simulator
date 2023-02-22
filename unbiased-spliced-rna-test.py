@@ -209,24 +209,24 @@ def modifyTranscript(gene, variants, if_print=False):
 # module load htslib
 # module load samtools/1.11-rhel8
 ######### 1000 Genome individuals
-# N=1
-# sample="HG00096"
+# N=2
+# sample="NA12878"
 # util_dir=/hpc/home/bmajoros/twobit
 # genome=/datacommons/allenlab/hg19/hg19.2bit
 # gff=/datacommons/allenlab/hg19/filter/gencode.v19.annotation.level12.gtf
-# sam=/hpc/group/allenlab/scarlett/output/RNAseq/1000Genome/$sample/tmp/simulation_SNPs_even_100/${sample}.sam.gz
-# vcfgz=/hpc/group/allenlab/scarlett/output/RNAseq/1000Genome/$sample/${sample}.no_chr.content.SNPs.filtered.vcf.gz
-# out_path=/hpc/group/allenlab/scarlett/output/RNAseq/1000Genome/$sample/tmp/simulation_test
-# read_depth=1
+# sam=/hpc/group/allenlab/scarlett/output/RNAseq/GIAB/$sample/tmp/simulation_SNPs_even_101/${sample}.sam.gz
+# vcfgz=/hpc/group/allenlab/scarlett/output/RNAseq/GIAB/$sample/${sample}.no_chr.content.SNPs.filtered.vcf.gz
+# out_path=/hpc/group/allenlab/scarlett/output/RNAseq/GIAB/$sample/tmp/simulation_test
+# read_depth=100
 ######### GSD individuals
 # sample="123375"
 # sam=/hpc/group/allenlab/scarlett/output/RNAseq/GSD/$sample/tmp/simulation_SNPs_even_100/${sample}.sam.gz
 # vcfgz=/hpc/group/allenlab/scarlett/output/RNAseq/GSD/$sample/${sample}.no_chr.content.SNPs.filtered.vcf.gz
 # out_path=/hpc/group/allenlab/scarlett/output/RNAseq/GSD/$sample/tmp/simulation_test
-# read_depth=1
+# read_depth=100
 #
 # EXAMPLE running command:
-# python /hpc/group/allenlab/scarlett/script/spliced_simulator/unbiased-spliced-rna-test.py $util_dir $genome $gff $sam $vcfgz $out_path $read_depth --out-prefix chr${N} --chr chr${N} --allSNPs --gene ENSG00000162688.11 -v
+# python /hpc/group/allenlab/scarlett/script/spliced_simulator/unbiased-spliced-rna-test.py $util_dir $genome $gff $sam $vcfgz $out_path $read_depth --out-prefix chr${N} --chr chr${N} --allSNPs --gene ENSG00000213626.7 -v
 # ============================================
 
 # =========================================================================
