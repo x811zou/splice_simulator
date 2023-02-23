@@ -4,14 +4,14 @@
 # =========================================================================
 
 import logging
-import os
 import re
 import tempfile
-import time
 
 import argparse
+import tracemalloc
 
 import numpy as np
+import psutil
 from helper import (
     posTlen_to_fragLen,
     sam_data_processor,
@@ -22,19 +22,12 @@ from helper import (
     run2bitBatch,
     constructTwoBitInput,
     annotate_transcripts,
-    chunk_iter,
-    printRead,  #
 )
 
 import sys
 import random
 import gzip
-import copy
-import pickle
 from misc_tools.GffTranscriptReader import GffTranscriptReader
-from pathlib import Path
-from datetime import datetime, timedelta
-from collections import defaultdict
 from misc_tools.Translation import Translation
 
 
@@ -94,6 +87,10 @@ def loadRegionData(vcfFile, samFile, genes, variant_processor):
 
 def getRegionStr(gene):
     return f"{gene.getSubstrate().strip('chr')}:{gene.getBegin()}-{gene.getEnd()}"
+
+
+def getMemoryUsageMB():
+    return psutil.Process().memory_info().rss / 1024**2
 
 
 # returns list<(transcript_id, pat_seq, mat_seq)>
@@ -202,7 +199,11 @@ def runSimulation(
     num_genes_with_no_qual_strs_or_pos_tlens = 0
 
     nextReadID = 0
+    n_genes = len(genes)
     for i, gene in enumerate(genes):
+        if i % 100 == 0:
+            logging.info(f"processed {i} / {n_genes} genes")
+            logging.info(f"memory usage {getMemoryUsageMB()} MB")
         if max_genes > 0 and i >= max_genes:
             break
         mat_reads = 0
@@ -457,6 +458,9 @@ def main():
     # Simulate
     logging.info("Start simulation")
 
+    if tracemalloc.is_tracing():
+        snapshot1 = tracemalloc.take_snapshot()
+
     with open_output_file(outFile1) as OUT1, open_output_file(outFile2) as OUT2:
         runSimulation(
             genes,
@@ -470,6 +474,13 @@ def main():
         )
 
     logging.info(f"{datetime.now()} Finish simulation")
+
+    if tracemalloc.is_tracing():
+        snapshot2 = tracemalloc.take_snapshot()
+        top_stats = snapshot2.compare_to(snapshot1, "lineno")
+        print("[ Top 10 differences ]")
+        for stat in top_stats[:10]:
+            print(stat)
 
     # print stats
     # print("")
