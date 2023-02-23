@@ -96,48 +96,20 @@ def getRegionStr(gene):
     return f"{gene.getSubstrate().strip('chr')}:{gene.getBegin()}-{gene.getEnd()}"
 
 
-def modifyTranscript(gene, variants):
-    #########
-    # this function is used to create a set of paternal/maternal copy of a gene transcrips
-    # Paternal haplotype sequence (haplotype == 0): replace the allele for variants in ref gencode filtered transcript to actual ALT allele in VCF if first genotype column [0] is 1
-    # Maternal haplotype sequence (haplotype == 1): replace the allele for variants in ref gencode filtered transcript to actual ALT allele in VCF if second genotype column [1] is 1
-    # allele_in_vcf : allele in VCF
-    # refallele_in_ref : allele in reference transcript (gencode GTF hg19.v19)
-    # match: allele in gencode ref transcript (reversed if in reverse strand) MATCH the allele in VCF
-    # mismatch: ... NOT MATCH in ref allele of variant...
-    #########
-    # for pat transcript only
-    global matches
-    global mismatches
-    transcriptIdToBiSNPcount = {}
-    transcriptIdToBiSNPpos = defaultdict(set)
-    transcript_num = 0
-    # logging.debug(
-    #     f">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> modifying transcript: "
-    # )
-    patGene = copy.deepcopy(gene)
-    matGene = copy.deepcopy(gene)
-    # loop through each ref gencode transcript, create a mat/pat haplotype based on VCF, genotype[0] for pat, genotype[1] for mat
-    for patTranscript, matTranscript in zip(patGene.transcripts, matGene.transcripts):
-        transcript_num += 1
-        num = 0
-        # logging.debug(
-        #     f"transcript {transcript_num} - {patTranscript.getID()}: len {len(patTranscript.sequence)}"
-        # )
-        patSeq = list(patTranscript.sequence)
-        matSeq = list(matTranscript.sequence)
-        # loop through each bi-allelic SNP from VCF
+# returns list<(transcript_id, pat_seq, mat_seq)>
+def makeModifiedSequences(gene, variants, transcript_ids):
+    result = []
+    for transcript_id in transcript_ids:
+        transcript = next(x for x in gene.transcripts if x.getID() == transcript_id)
+
+        pat_seq = list(transcript.sequence)
+        mat_seq = list(transcript.sequence)
+
         for variant in variants:
-            trans_pos = patTranscript.mapToTranscript(variant.genomicPos)
+            trans_pos = transcript.mapToTranscript(variant.genomicPos)
             if trans_pos < 0:
                 continue
-            # logging.debug(
-            #     f"transcript {transcript_num} - {patTranscript.getID()}: genomic pos {variant.genomicPos} - trans pos: {trans_pos} - {variant.genotype[0]} | {variant.genotype[1]} - ref {variant.ref} | alt {variant.alt}"
-            # )
-            if variant.genotype[0] != variant.genotype[1]:
-                transcriptIdToBiSNPpos[patTranscript.getID()].add(variant.genomicPos)
-                num += 1
-            refallele_in_ref = patSeq[trans_pos]
+
             refallele_in_vcf = variant.ref
             altallele_in_vcf = variant.alt
             if (
@@ -145,97 +117,67 @@ def modifyTranscript(gene, variants):
             ):  # reverse the allele if it is in the reverse strand
                 refallele_in_vcf = Translation.reverseComplement(refallele_in_vcf)
                 altallele_in_vcf = Translation.reverseComplement(altallele_in_vcf)
-            if refallele_in_vcf == refallele_in_ref:
-                matches += 1
-            else:
-                mismatches += 1
-            ### debugging end
-            if variant.genotype[0] == 0:
-                patSeq[trans_pos] = refallele_in_vcf
-            else:
-                patSeq[trans_pos] = altallele_in_vcf
-            if variant.genotype[1] == 0:
-                matSeq[trans_pos] = refallele_in_vcf
-            else:
-                matSeq[trans_pos] = altallele_in_vcf
-            # logging.debug(
-            #     f">>> simulation {gene.getStrand()} -- VCF: {variant.genotype[0]} | {variant.genotype[1]} - ref:{refallele_in_vcf} | alt:{altallele_in_vcf}; vs reference: {refallele_in_ref} - pat seq :{patSeq[trans_pos]} | mat seq :{matSeq[trans_pos]}"
-            # )
-            ##########################
-        patTranscript.sequence = "".join(patSeq)
-        matTranscript.sequence = "".join(matSeq)
-        transcriptIdToBiSNPcount[patTranscript.getID()] = num
-        # logging.debug(
-        #     f">>>>>> %dth transcript, in total %d bi-allelic SNP"
-        #     % (transcript_num, num)
-        # )
-    # logging.debug(
-    #     f">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
-    # )
-    # logging.debug(transcriptIdToBiSNPpos)
-    return patGene, matGene, transcriptIdToBiSNPpos, transcript_num
+
+            pat_seq[trans_pos] = (
+                refallele_in_vcf if variant.genotype[0] == 0 else altallele_in_vcf
+            )
+            mat_seq[trans_pos] = (
+                refallele_in_vcf if variant.genotype[1] == 0 else altallele_in_vcf
+            )
+
+        result.append((transcript_id, "".join(pat_seq), "".join(mat_seq)))
+
+    return result
 
 
 def simulateRead(
-    candidate_transcript_pairs,
+    candidate_sequence_items,
     transcript_id_to_fragLen,
     qual_strs,
     qual_str_lens,
     use_random_reads,
 ):
-    patTranscript, matTranscript = random.choice(candidate_transcript_pairs)
-    transcript_length = matTranscript.getLength()
-    frag_lens = transcript_id_to_fragLen[patTranscript.getID()]
+    transcript_id, pat_seq, mat_seq = random.choice(candidate_sequence_items)
+    transcript_length = len(pat_seq)
+    frag_lens = transcript_id_to_fragLen[transcript_id]
     min_frag_len = frag_lens[0]
 
     assert min_frag_len <= transcript_length
-    fragLen = random.choice(frag_lens)
+    frag_len = random.choice(frag_lens)
 
-    candidate_qual_str_count = np.searchsorted(qual_str_lens, fragLen, side="right")
+    candidate_qual_str_count = np.searchsorted(qual_str_lens, frag_len, side="right")
     assert candidate_qual_str_count > 0
     candidate_quals = qual_strs[:candidate_qual_str_count]
 
     fwd_qual = random.choice(candidate_quals)
     rev_qual = random.choice(candidate_quals)
     # simulate reads for paternal and maternal copy
-    (
-        patSeq,
-        patSeq_rev,
-        matSeq,
-        matSeq_rev,
-        fwd_LEN,
-        rev_LEN,
-        start1,
-        end1,
-        start2,
-        end2,
-    ) = simRead_patmat(
-        patTranscript,
-        matTranscript,
-        fwd_qual,
-        rev_qual,
-        fragLen,
-    )
-
-    if patSeq is None or matSeq is None:
-        # gene is shorter than fragment length
+    simulated_sequences = simRead_patmat(pat_seq, mat_seq, fwd_qual, rev_qual, frag_len)
+    if simulated_sequences is None:
         return None
+
+    (
+        simulated_ref_seq,
+        simulated_ref_seq_rev,
+        simulated_alt_seq,
+        simulated_alt_seq_rev,
+    ) = simulated_sequences
 
     ################## random haplotype simulator: randomly generate a mat or pat copy
     if use_random_reads:
         is_mat = random.random() >= 0.5
         if is_mat:
-            fwd_seq = matSeq
-            rev_seq = matSeq_rev
+            fwd_seq = simulated_alt_seq
+            rev_seq = simulated_alt_seq_rev
         else:
-            fwd_seq = patSeq
-            rev_seq = patSeq_rev
+            fwd_seq = simulated_ref_seq
+            rev_seq = simulated_ref_seq_rev
 
         return [(is_mat, fwd_seq, fwd_qual, rev_seq, rev_qual)]
     ################## equal haplotype copy simulator: both mat and pat has same number of reads
     return [
-        (False, patSeq, fwd_qual, patSeq_rev, rev_qual),
-        (True, matSeq, fwd_qual, matSeq_rev, rev_qual),
+        (False, simulated_ref_seq, fwd_qual, simulated_ref_seq_rev, rev_qual),
+        (True, simulated_alt_seq, fwd_qual, simulated_alt_seq_rev, rev_qual),
     ]
 
 
@@ -317,17 +259,10 @@ def runSimulation(
             continue
 
         recorded_genes += 1
-        ######## write pat/mat transcripts
-        paternal, maternal, transcriptIdToBiSNPpos, transcript_num = modifyTranscript(
-            gene, variants
+
+        candidate_sequence_items = makeModifiedSequences(
+            gene, variants, list(transcript_id_to_fragLen.keys())
         )
-        candidate_transcript_pairs = [
-            (
-                next(filter(lambda y: y.getID() == id, paternal.transcripts)),
-                next(filter(lambda y: y.getID() == id, maternal.transcripts)),
-            )
-            for id in transcript_id_to_fragLen
-        ]
 
         # read coverage per SNP we want * length of the longest transcript / minimum quality string length (for the gene)
         if use_random_reads:
@@ -341,7 +276,7 @@ def runSimulation(
         )
         for i in range(num_reads):
             read_results = simulateRead(
-                candidate_transcript_pairs,
+                candidate_sequence_items,
                 transcript_id_to_fragLen,
                 qual_strs,
                 qual_str_lens,

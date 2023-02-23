@@ -191,16 +191,16 @@ def sam_data_processor(line):
     return result
 
 
-def simRead_patmat(refTranscript, altTranscript, qual1, qual2, fragLen):
+def simRead_patmat(input_ref_seq, input_alt_seq, qual1, qual2, fragLen):
     #####################################################################
     # transcript length
-    L = len(refTranscript.sequence)
+    L = len(input_ref_seq)
     # transcript seq index start/end
     L_end = L - 1
     L_start = 0
     # fragLen: actual read length drawn from SAM
     if L_end < fragLen or L_end < len(qual1) or L_end < len(qual2):
-        return (None, None, None, None, None, None)
+        return None
     # transcript coord
     lastStart = min(L_end - fragLen, L_end - len(qual1), L_end - len(qual2))  # 20
     start1 = random.randrange(lastStart + 1)  # 10
@@ -229,24 +229,18 @@ def simRead_patmat(refTranscript, altTranscript, qual1, qual2, fragLen):
     # )
 
     ######## forward strand, same sequence pos for mat/aptf fov
-    refSeq = refTranscript.sequence[start1:end1]
-    altSeq = altTranscript.sequence[start1:end1]
+    simulated_ref_seq = input_ref_seq[start1:end1]
+    simulated_alt_seq = input_alt_seq[start1:end1]
     ######## reverse strand, same sequence pos for mat/apt rev
-    refSeq_rev = reverse_complement(refTranscript.sequence[start2:end2])
-    altSeq_rev = reverse_complement(altTranscript.sequence[start2:end2])
-    assert len(qual1) == len(refSeq)
-    assert len(qual2) == len(refSeq_rev)
+    simulated_ref_seq_rev = reverse_complement(input_ref_seq[start2:end2])
+    simulated_alt_seq_rev = reverse_complement(input_alt_seq[start2:end2])
+    assert len(qual1) == len(simulated_ref_seq)
+    assert len(qual2) == len(simulated_ref_seq_rev)
     return (
-        refSeq,
-        refSeq_rev,
-        altSeq,
-        altSeq_rev,
-        LEN1,
-        LEN2,
-        start1,
-        end1,
-        start2,
-        end2,
+        simulated_ref_seq,
+        simulated_ref_seq_rev,
+        simulated_alt_seq,
+        simulated_alt_seq_rev,
     )
 
 
