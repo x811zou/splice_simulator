@@ -33,6 +33,7 @@ from builtins import (
     map,
     zip,
 )
+import logging
 
 # The above imports should allow this program to run in both Python 2 and
 # Python 3.  You might need to update your version of module "future".
@@ -53,6 +54,8 @@ from datetime import datetime
 from misc_tools.Translation import Translation
 
 rex = Rex()
+
+
 #######################################
 class Variant:
     def __init__(self, fields):
@@ -67,19 +70,20 @@ class Variant:
             if self.genotype[0] not in {0, 1} or self.genotype[1] not in {0, 1}:
                 self.genotype = None
         # cat HG00096.no_chr.content.SNPs.filtered.vcf.gz | gunzip | awk '{print $10}' | sort | uniq -c
-            # 74304603 0|0
-            # 1071282 0|1
-            # 1065885 1|0
-            # 1376362 1|1
+        # 74304603 0|0
+        # 1071282 0|1
+        # 1065885 1|0
+        # 1376362 1|1
         # cat 123375.no_chr.content.SNPs.filtered.vcf.gz | gunzip | awk '{print $10}' | sort | uniq -c
-            # 21194 ./.
-            # 2917072 0/0
-            # 2354362 0/1
+        # 21194 ./.
+        # 2917072 0/0
+        # 2354362 0/1
         # cat NA12878.no_chr.content.SNPs.filtered.vcf.gz | gunzip | awk '{print $10}' | sort | uniq -c
-            # 5947 0/1
-            # 976007 0|1
-            # 986082 1|0
-            # 1289007 1|1
+        # 5947 0/1
+        # 976007 0|1
+        # 986082 1|0
+        # 1289007 1|1
+
     def isOK(self):
         return self.genotype is not None
 
@@ -103,7 +107,7 @@ def tabix_regions(
         f"{datetime.now()} Start tabix extraction of {len(regions)} regions from file {target_file_path}"
     )
 
-    regions=list(map(lambda x: region_prefix + x, regions))
+    regions = list(map(lambda x: region_prefix + x, regions))
 
     if len(regions) > 1000:
         with tempfile.NamedTemporaryFile(mode="w") as file:
@@ -126,7 +130,7 @@ def tabix_regions(
     lines = output.split("\n")
     records = []
     for line in lines:
-        #print(line)
+        # print(line)
         if len(line) == 0:
             continue
         # start accumulating new region
@@ -165,6 +169,7 @@ def variant_processor_hets(line):
         return None
     return variant
 
+
 def variant_processor_SNPs(line):
     #########
     # this function is used to fetch variants from .vcf
@@ -179,6 +184,7 @@ def variant_processor_SNPs(line):
     if not (len(variant.ref) == 1 and len(variant.alt) == 1):
         return None
     return variant
+
 
 def sam_data_processor(line):
     #########
@@ -204,7 +210,7 @@ def sam_data_processor(line):
     return result
 
 
-def simRead_patmat(refTranscript, altTranscript, qual1, qual2, fragLen, if_print=False):
+def simRead_patmat(refTranscript, altTranscript, qual1, qual2, fragLen):
     #####################################################################
     # transcript length
     L = len(refTranscript.sequence)
@@ -263,18 +269,11 @@ def simRead_patmat(refTranscript, altTranscript, qual1, qual2, fragLen, if_print
     )
 
 
-if_print = False
-
-
-def print_verbose(s):
-    if if_print:
-        print(s)
-
-
-def posTlen_to_fragLen(gene, pos1_tlen_to_count, readLen, if_debug=False):
+def posTlen_to_fragLen(gene, pos1_tlen_to_count, readLen):
     transcript_to_mapped_lengths = {}
-    if if_debug:
-        print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>  filtering : valid start/end pos of SAM records map to transcript")
+    # logging.debug(
+    #     ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>  filtering : valid start/end pos of SAM records map to transcript"
+    # )
     for i in range(gene.getNumTranscripts()):
         transcript = gene.getIthTranscript(i)
         mapped_lengths = []
@@ -299,29 +298,19 @@ def posTlen_to_fragLen(gene, pos1_tlen_to_count, readLen, if_debug=False):
             if end < 0:
                 continue
             mapped_length = abs(end - begin)
-            if if_debug:
-                print(
-                    f"transcript {i+1} - {transcript.getID()}:{pos1_tlen} mapped start,end: ({begin},{end}) fragLen {mapped_length}"
-                )
+            # logging.debug(
+            #     f"transcript {i+1} - {transcript.getID()}:{pos1_tlen} mapped start,end: ({begin},{end}) fragLen {mapped_length}"
+            # )
             if mapped_length < readLen:
                 continue
 
             mapped_lengths.extend([mapped_length for i in range(count)])
 
         if len(mapped_lengths) > 0:
+            mapped_lengths.sort()
             transcript_to_mapped_lengths[transcript] = mapped_lengths
 
     return transcript_to_mapped_lengths
-
-
-def pick_fragLen(fragLens, max_qual_len, transcript_length):
-    # print(fragLens)
-    random.shuffle(fragLens)
-    for fragLen in fragLens:
-        # print(fragLen)
-        if fragLen < transcript_length and fragLen >= max_qual_len:
-            return fragLen
-    return None
 
 
 def twoBitID(chr, begin, end):
