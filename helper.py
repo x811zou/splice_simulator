@@ -12,26 +12,13 @@ from __future__ import (
     with_statement,
 )
 from builtins import (
-    bytes,
-    dict,
     int,
     list,
-    object,
     range,
     str,
-    ascii,
-    chr,
-    hex,
-    input,
     next,
-    oct,
     open,
-    pow,
-    round,
-    super,
-    filter,
     map,
-    zip,
 )
 import logging
 
@@ -39,17 +26,11 @@ import logging
 # Python 3.  You might need to update your version of module "future".
 import sys
 import random
-import copy
-import gzip
 import os
-import re
 import tempfile
-from misc_tools.GffTranscriptReader import GffTranscriptReader
 from misc_tools.Pipe import Pipe
-from misc_tools.ConfigFile import ConfigFile
 from misc_tools.Rex import Rex
-from Bio.Seq import Seq
-from pathlib import Path
+from Bio.Seq import reverse_complement
 from datetime import datetime
 from misc_tools.Translation import Translation
 
@@ -223,14 +204,14 @@ def simRead_patmat(refTranscript, altTranscript, qual1, qual2, fragLen):
     # transcript coord
     lastStart = min(L_end - fragLen, L_end - len(qual1), L_end - len(qual2))  # 20
     start1 = random.randrange(lastStart + 1)  # 10
-    start1_genome = refTranscript.mapToGenome(start1)
+    # start1_genome = refTranscript.mapToGenome(start1)
     end1 = start1 + len(qual1)  # rec1.readLen  # 10+75 = 85
-    end1_genome = refTranscript.mapToGenome(end1)
+    # end1_genome = refTranscript.mapToGenome(end1)
     LEN1 = abs(end1 - start1)
     end2 = start1 + fragLen  # 10+80 = 90
-    end2_genome = refTranscript.mapToGenome(end2)
+    # end2_genome = refTranscript.mapToGenome(end2)
     start2 = end2 - len(qual2)  # rec2.readLen  # 90-75 = 15
-    start2_genome = refTranscript.mapToGenome(start2)
+    # start2_genome = refTranscript.mapToGenome(start2)
     LEN2 = abs(end2 - start2)
     # if if_print:
     #     print(
@@ -251,8 +232,8 @@ def simRead_patmat(refTranscript, altTranscript, qual1, qual2, fragLen):
     refSeq = refTranscript.sequence[start1:end1]
     altSeq = altTranscript.sequence[start1:end1]
     ######## reverse strand, same sequence pos for mat/apt rev
-    refSeq_rev = Seq(refTranscript.sequence[start2:end2]).reverse_complement()
-    altSeq_rev = Seq(altTranscript.sequence[start2:end2]).reverse_complement()
+    refSeq_rev = reverse_complement(refTranscript.sequence[start2:end2])
+    altSeq_rev = reverse_complement(altTranscript.sequence[start2:end2])
     assert len(qual1) == len(refSeq)
     assert len(qual2) == len(refSeq_rev)
     return (

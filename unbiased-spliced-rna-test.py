@@ -268,15 +268,13 @@ def simulateRead(
     ]
 
 
-DEBUG_MAX_GENES = 100
-
-
 def runSimulation(
     genes,
     region_str_to_variants,
     region_str_to_sam_data,
     use_random_reads,
     read_depth,
+    max_genes,
     write_fwd,
     write_rev,
 ):
@@ -296,7 +294,7 @@ def runSimulation(
 
     nextReadID = 0
     for i, gene in enumerate(genes):
-        if i >= DEBUG_MAX_GENES:
+        if max_genes > 0 and i >= max_genes:
             break
         mat_reads = 0
         pat_reads = 0
@@ -499,6 +497,9 @@ def main():
         "-v", "--verbose", action="store_true", help="print lots of info"
     )
     parser.add_argument("--allSNPs", action="store_true", help="include all SNPs")
+    parser.add_argument(
+        "--max-genes", help="max number of genes to simulate", type=int, default=0
+    )
 
     args = parser.parse_args()
 
@@ -595,6 +596,7 @@ def main():
             region_str_to_sam_data,
             args.random,
             args.read_depth,
+            args.max_genes,
             lambda id, seq, qual: write_read(id, seq, qual, OUT1),
             lambda id, seq, qual: write_read(id, seq, qual, OUT2),
         )
