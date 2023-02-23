@@ -195,16 +195,6 @@ def simulateRead(
     assert candidate_qual_str_count > 0
     candidate_quals = qual_strs[:candidate_qual_str_count]
 
-    # if if_print:
-    #     if target_gene is not None:
-    #         print("")
-    #         print(
-    #             ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> simulated candidate transcripts"
-    #         )
-    #         print(
-    #             f"{i}-th reads, randomly chosen transcript {patTranscript.getID()},transcript length: {transcript_length}, randomly chosen fragLen: {fragLen}, chosen quality string length: {len(candidate_quals)}"
-    #         )
-
     fwd_qual = random.choice(candidate_quals)
     rev_qual = random.choice(candidate_quals)
     # simulate reads for paternal and maternal copy
@@ -226,29 +216,10 @@ def simulateRead(
         rev_qual,
         fragLen,
     )
-    # if target_gene is not None:
-    #     list_fragLen.append(fragLen)
-    #     list_start1.append(start1)
-    #     list_end1.append(end1)
-    #     list_start2.append(start2)
-    #     list_end2.append(end2)
+
     if patSeq is None or matSeq is None:
         # gene is shorter than fragment length
         return None
-
-    # if target_gene is not None:
-    #     out = gene_folder
-    #     Path(out).mkdir(parents=True, exist_ok=True)
-    #     with open(out + "/trans_start1", "wb") as fp:
-    #         pickle.dump(list_start1, fp)
-    #     with open(out + "/trans_end1", "wb") as fp:
-    #         pickle.dump(list_end1, fp)
-    #     with open(out + "/trans_start2", "wb") as fp:
-    #         pickle.dump(list_start2, fp)
-    #     with open(out + "/trans_end2", "wb") as fp:
-    #         pickle.dump(list_end2, fp)
-    # else:
-    #     out = out_path
 
     ################## random haplotype simulator: randomly generate a mat or pat copy
     if use_random_reads:
@@ -288,10 +259,6 @@ def runSimulation(
     num_genes_with_all_transcripts_filtered = 0
     num_genes_with_no_qual_strs_or_pos_tlens = 0
 
-    # if target_gene is not None:
-    #     list_fragLen = []
-    # list_ratio = []
-
     nextReadID = 0
     for i, gene in enumerate(genes):
         if max_genes > 0 and i >= max_genes:
@@ -302,19 +269,6 @@ def runSimulation(
         chrN = gene.getSubstrate()
         geneid = gene.getId()
         length = gene.longestTranscript().getLength()
-
-        # DEBUGGING start
-        # if target_gene is not None:
-        #     list_start1 = []
-        #     list_start2 = []
-        #     list_end1 = []
-        #     list_end2 = []
-        #     transcript = gene.longestTranscript()
-        #     transcript.exons = transcript.getRawExons()
-        #     debug_print(
-        #         f"DEBUG... {geneid}, gene region: {region_str}, longest transcript length: {length}"
-        #     )
-        # DEBUGGING end
 
         if not region_str in region_str_to_sam_data:
             logging.debug(f"{chrN},gene: {geneid}, no mapped reads in SAM, skip")
@@ -374,17 +328,6 @@ def runSimulation(
             )
             for id in transcript_id_to_fragLen
         ]
-        # print(candidate_transcripts)
-        # if target_gene is not None:
-        #     debug_print(
-        #         f">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> {len(transcript_to_fragLen)} available transcripts:"
-        #     )
-        #     for trans in candidate_transcripts:
-        #         print(
-        #             f"transcript {trans.getID()} CDS region: {trans.getCDSbeginEnd()}; transcript region: {trans.getBegin()}-{trans.getEnd()}; valid fragLen {transcript_to_fragLen[trans]}"
-        #         )
-        #     for j in transcriptIdToBiSNPpos:
-        #         print(f">>>>> transcript ID {j},hetSNPs: {transcriptIdToBiSNPpos[j]}")
 
         # read coverage per SNP we want * length of the longest transcript / minimum quality string length (for the gene)
         if use_random_reads:
