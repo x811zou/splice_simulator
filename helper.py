@@ -191,32 +191,35 @@ def sam_data_processor(line):
     return result
 
 
-def simRead_patmat(input_ref_seq, input_alt_seq, qual1, qual2, fragLen):
+def simRead_patmat(
+    input_ref_seq,
+    input_alt_seq,
+    input_ref_seq_rev_comp,
+    input_alt_seq_rev_comp,
+    qual1,
+    qual2,
+    fragLen,
+):
     #####################################################################
     # transcript length
     L = len(input_ref_seq)
+    qual1_len = len(qual1)
+    qual2_len = len(qual2)
     # transcript seq index start/end
     L_end = L - 1
     L_start = 0
     # fragLen: actual read length drawn from SAM
-    if L_end < fragLen or L_end < len(qual1) or L_end < len(qual2):
+    if L_end < fragLen or L_end < qual1_len or L_end < qual2_len:
         return None
     # transcript coord
-    lastStart = min(L_end - fragLen, L_end - len(qual1), L_end - len(qual2))  # 20
+    lastStart = min(L_end - fragLen, L_end - qual1_len, L_end - qual2_len)  # 20
     start1 = random.randrange(lastStart + 1)  # 10
-    # start1_genome = refTranscript.mapToGenome(start1)
-    end1 = start1 + len(qual1)  # rec1.readLen  # 10+75 = 85
-    # end1_genome = refTranscript.mapToGenome(end1)
+    end1 = start1 + qual1_len  # rec1.readLen  # 10+75 = 85
     LEN1 = abs(end1 - start1)
     end2 = start1 + fragLen  # 10+80 = 90
-    # end2_genome = refTranscript.mapToGenome(end2)
-    start2 = end2 - len(qual2)  # rec2.readLen  # 90-75 = 15
-    # start2_genome = refTranscript.mapToGenome(start2)
+    start2 = end2 - qual2_len  # rec2.readLen  # 90-75 = 15
     LEN2 = abs(end2 - start2)
-    # if if_print:
-    #     print(
-    #         f"L{L} - start1-end1:{start1_genome}-{end1_genome} - fragLen: {fragLen} - qual1: {len(qual1)} - qual2: {len(qual2)} -  start2:{start2_genome}-{end2_genome}"
-    #     )
+
     assert start1 >= L_start
     assert end1 <= L_end
     assert start2 >= L_start
@@ -224,18 +227,16 @@ def simRead_patmat(input_ref_seq, input_alt_seq, qual1, qual2, fragLen):
     assert len(qual1) == LEN1
     assert len(qual2) == LEN2
 
-    # print(
-    #     f"qual1 {len(qual1)} qual2{len(qual2)} len1 {LEN1} len2 {LEN2} fwdSeq length{len(refSeq)} revSeq length {len(refSeq_rev)}"
-    # )
-
     ######## forward strand, same sequence pos for mat/aptf fov
     simulated_ref_seq = input_ref_seq[start1:end1]
     simulated_alt_seq = input_alt_seq[start1:end1]
     ######## reverse strand, same sequence pos for mat/apt rev
-    simulated_ref_seq_rev = reverse_complement(input_ref_seq[start2:end2])
-    simulated_alt_seq_rev = reverse_complement(input_alt_seq[start2:end2])
+    simulated_ref_seq_rev = input_ref_seq_rev_comp[L - end2 : L - start2]
+    simulated_alt_seq_rev = input_alt_seq_rev_comp[L - end2 : L - start2]
+
     assert len(qual1) == len(simulated_ref_seq)
     assert len(qual2) == len(simulated_ref_seq_rev)
+
     return (
         simulated_ref_seq,
         simulated_ref_seq_rev,

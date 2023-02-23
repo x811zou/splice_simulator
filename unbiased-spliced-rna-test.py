@@ -9,6 +9,7 @@ import tempfile
 
 import argparse
 import tracemalloc
+from typing import NamedTuple
 
 import numpy as np
 import psutil
@@ -29,6 +30,7 @@ import random
 import gzip
 from misc_tools.GffTranscriptReader import GffTranscriptReader
 from misc_tools.Translation import Translation
+from Bio.Seq import reverse_complement
 
 
 def loadGenes(gffFile, chromosome=None, gene=None):
@@ -93,7 +95,16 @@ def getMemoryUsageMB():
     return psutil.Process().memory_info().rss / 1024**2
 
 
-# returns list<(transcript_id, pat_seq, mat_seq)>
+class TranscriptCandidate(NamedTuple):
+    transcript_id: str
+    seq_len: int
+    pat_seq: str
+    mat_seq: str
+    pat_seq_rev_comp: str
+    mat_seq_rev_comp: str
+
+
+# returns list<TranscriptCandidate>
 def makeModifiedSequences(gene, variants, transcript_ids):
     result = []
     for transcript_id in transcript_ids:
@@ -122,7 +133,20 @@ def makeModifiedSequences(gene, variants, transcript_ids):
                 refallele_in_vcf if variant.genotype[1] == 0 else altallele_in_vcf
             )
 
-        result.append((transcript_id, "".join(pat_seq), "".join(mat_seq)))
+        pat_seq = "".join(pat_seq)
+        mat_seq = "".join(mat_seq)
+        pat_seq_rev_comp = reverse_complement(pat_seq)
+        mat_seq_rev_comp = reverse_complement(mat_seq)
+        result.append(
+            TranscriptCandidate(
+                transcript_id,
+                len(pat_seq),
+                pat_seq,
+                mat_seq,
+                pat_seq_rev_comp,
+                mat_seq_rev_comp,
+            )
+        )
 
     return result
 
@@ -134,9 +158,10 @@ def simulateRead(
     qual_str_lens,
     use_random_reads,
 ):
-    transcript_id, pat_seq, mat_seq = random.choice(candidate_sequence_items)
-    transcript_length = len(pat_seq)
-    frag_lens = transcript_id_to_fragLen[transcript_id]
+    # item = random.choice(candidate_sequence_items)
+    item = random.choice(candidate_sequence_items)
+    transcript_length = item.seq_len
+    frag_lens = transcript_id_to_fragLen[item.transcript_id]
     min_frag_len = frag_lens[0]
 
     assert min_frag_len <= transcript_length
@@ -149,7 +174,15 @@ def simulateRead(
     fwd_qual = random.choice(candidate_quals)
     rev_qual = random.choice(candidate_quals)
     # simulate reads for paternal and maternal copy
-    simulated_sequences = simRead_patmat(pat_seq, mat_seq, fwd_qual, rev_qual, frag_len)
+    simulated_sequences = simRead_patmat(
+        item.pat_seq,
+        item.mat_seq,
+        item.pat_seq_rev_comp,
+        item.mat_seq_rev_comp,
+        fwd_qual,
+        rev_qual,
+        frag_len,
+    )
     if simulated_sequences is None:
         return None
 
@@ -398,21 +431,21 @@ def main():
         logging.debug("EQUALLY generate pat/mat reads for each read...")
 
     if args.chr:
-        logging.debug(f"{datetime.now()} CHRomosome mode turned on for {args.chr}")
+        logging.debug(f"CHRomosome mode turned on for {args.chr}")
     else:
-        logging.debug(f"{datetime.now()} default: looking at all genes")
+        logging.debug(f"default: looking at all genes")
 
     if args.all_snps:
-        logging.debug(f"{datetime.now()} all SNPs mode turned on")
+        logging.debug(f"all SNPs mode turned on")
     else:
-        logging.debug(f"{datetime.now()} default: looking at all hets")
+        logging.debug(f"default: looking at all hets")
 
     if args.gene:
-        logging.debug(f"{datetime.now()} target gene mode turned on for {args.gene}")
+        logging.debug(f"target gene mode turned on for {args.gene}")
 
     logging.debug(args)
 
-    logging.info(f"{datetime.now()} simulation seed : {args.seed}")
+    logging.info(f"simulation seed : {args.seed}")
     random.seed(args.seed)
 
     target_chromosome = args.chr
@@ -424,13 +457,13 @@ def main():
 
     # Load GFF and fragment lengths
 
-    logging.info(f"{datetime.now()} reading GFF...")
+    logging.info(f"reading GFF...")
     genes = loadGenes(args.gff, target_chromosome, target_gene)
-    logging.info(f"{datetime.now()} done reading GFF...")
+    logging.info(f"done reading GFF...")
 
     logging.info(f"found {len(genes)} genes for transcripts")
     if len(genes) == 0:
-        logging.info(f"{datetime.now()} no genes found in GFF")
+        logging.info(f"no genes found in GFF")
         return
 
     # annotate transcripts
@@ -473,7 +506,7 @@ def main():
             lambda id, seq, qual: write_read(id, seq, qual, OUT2),
         )
 
-    logging.info(f"{datetime.now()} Finish simulation")
+    logging.info(f"Finish simulation")
 
     if tracemalloc.is_tracing():
         snapshot2 = tracemalloc.take_snapshot()
