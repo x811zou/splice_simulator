@@ -251,7 +251,7 @@ def simRead_patmat(refTranscript, altTranscript, qual1, qual2, fragLen):
 
 
 def posTlen_to_fragLen(gene, pos1_tlen_to_count, readLen):
-    transcript_to_mapped_lengths = {}
+    transcript_id_to_mapped_lengths = {}
     # logging.debug(
     #     ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>  filtering : valid start/end pos of SAM records map to transcript"
     # )
@@ -289,9 +289,9 @@ def posTlen_to_fragLen(gene, pos1_tlen_to_count, readLen):
 
         if len(mapped_lengths) > 0:
             mapped_lengths.sort()
-            transcript_to_mapped_lengths[transcript] = mapped_lengths
+            transcript_id_to_mapped_lengths[transcript.getID()] = mapped_lengths
 
-    return transcript_to_mapped_lengths
+    return transcript_id_to_mapped_lengths
 
 
 def twoBitID(chr, begin, end):

@@ -178,14 +178,14 @@ def modifyTranscript(gene, variants):
 
 def simulateRead(
     candidate_transcript_pairs,
-    transcript_to_fragLen,
+    transcript_id_to_fragLen,
     qual_strs,
     qual_str_lens,
     use_random_reads,
 ):
     patTranscript, matTranscript = random.choice(candidate_transcript_pairs)
     transcript_length = matTranscript.getLength()
-    frag_lens = transcript_to_fragLen[patTranscript]
+    frag_lens = transcript_id_to_fragLen[patTranscript.getID()]
     min_frag_len = frag_lens[0]
 
     assert min_frag_len <= transcript_length
@@ -355,10 +355,10 @@ def runSimulation(
         qual_str_lens = np.array([len(x) for x in qual_strs])
         min_qual_len = qual_str_lens[0]
         ######## filter1: loop through each transcript, to
-        transcript_to_fragLen = posTlen_to_fragLen(
+        transcript_id_to_fragLen = posTlen_to_fragLen(
             gene, pos1_tlen_to_count, min_qual_len
         )
-        if len(transcript_to_fragLen) == 0:
+        if len(transcript_id_to_fragLen) == 0:
             num_genes_with_all_transcripts_filtered += 1
             continue
 
@@ -367,10 +367,12 @@ def runSimulation(
         paternal, maternal, transcriptIdToBiSNPpos, transcript_num = modifyTranscript(
             gene, variants
         )
-        candidate_transcripts = list(transcript_to_fragLen.keys())
         candidate_transcript_pairs = [
-            (x, next(filter(lambda y: y.getID() == x.getID(), maternal.transcripts)))
-            for x in candidate_transcripts
+            (
+                next(filter(lambda y: y.getID() == id, paternal.transcripts)),
+                next(filter(lambda y: y.getID() == id, maternal.transcripts)),
+            )
+            for id in transcript_id_to_fragLen
         ]
         # print(candidate_transcripts)
         # if target_gene is not None:
@@ -397,7 +399,7 @@ def runSimulation(
         for i in range(num_reads):
             read_results = simulateRead(
                 candidate_transcript_pairs,
-                transcript_to_fragLen,
+                transcript_id_to_fragLen,
                 qual_strs,
                 qual_str_lens,
                 use_random_reads,
