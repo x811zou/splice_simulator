@@ -426,6 +426,13 @@ def write_read(id, seq, qual, file):
     file.write(f"@{id}\n{seq}\n+\n{qual}\n")
 
 
+def open_output_file(filename):
+    if filename.endswith(".gz"):
+        return gzip.open(filename, "wt", compresslevel=3)
+    else:
+        return open(filename, "w")
+
+
 # ============================================
 # DEPENDENCIES:
 #   module load htslib
@@ -464,20 +471,16 @@ def main():
     parser.add_argument("gff", help="full path to gencode gtf file")
     parser.add_argument("samgz", help="full path to sam.gz")
     parser.add_argument("vcf", help="full path to VCF file without chr")
-    parser.add_argument("out_path", help="output path")
-    parser.add_argument("read_depth", help="per-base-read-depth", type=int)
+    parser.add_argument("--read_depth", help="per-base-read-depth", type=int)
     parser.add_argument(
         "--out1",
-        help="output name for forward strand fastq reads",
-        default="_1.fastq.gz",
+        help="output path for forward strand fastq reads",
+        default="./read_1.fastq.gz",
     )
     parser.add_argument(
         "--out2",
-        help="output name for reverse strand fastq reads",
-        default="_2.fastq.gz",
-    )
-    parser.add_argument(
-        "--out-prefix", help="prefix applied to output file names", default="read"
+        help="output path for reverse strand fastq reads",
+        default="./read_2.fastq.gz",
     )
     parser.add_argument("--chr", help="specific chromosome to simulate")
     parser.add_argument("--gene", help="specific gene to simulate", default=None)
@@ -496,9 +499,9 @@ def main():
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="print lots of info"
     )
-    parser.add_argument("--allSNPs", action="store_true", help="include all SNPs")
+    parser.add_argument("--all_snps", action="store_true", help="include all SNPs")
     parser.add_argument(
-        "--max-genes", help="max number of genes to simulate", type=int, default=0
+        "--max_genes", help="max number of genes to simulate", type=int, default=0
     )
 
     args = parser.parse_args()
@@ -518,7 +521,7 @@ def main():
     else:
         logging.debug(f"{datetime.now()} default: looking at all genes")
 
-    if args.allSNPs:
+    if args.all_snps:
         logging.debug(f"{datetime.now()} all SNPs mode turned on")
     else:
         logging.debug(f"{datetime.now()} default: looking at all hets")
@@ -534,17 +537,8 @@ def main():
     target_chromosome = args.chr
     target_gene = args.gene
 
-    out_path_folder = args.out_path
-    if target_gene is not None:
-        out_path_folder = os.path.join(out_path_folder, target_gene)
-        Path(out_path_folder).mkdir(parents=True, exist_ok=True)
-
-    Path(out_path_folder).mkdir(parents=True, exist_ok=True)
-    out_prefix = args.out_prefix
-    if target_gene is not None:
-        out_prefix = target_gene
-    outFile1 = os.path.join(out_path_folder, f"{out_prefix}{args.out1}")
-    outFile2 = os.path.join(out_path_folder, f"{out_prefix}{args.out2}")
+    outFile1 = args.out1
+    outFile2 = args.out2
     logging.info(f"output files {outFile1} {outFile2}")
 
     # Load GFF and fragment lengths
@@ -574,7 +568,7 @@ def main():
     logging.info(f"done annotating transcripts")
 
     variant_processor = (
-        variant_processor_SNPs if args.allSNPs else variant_processor_hets
+        variant_processor_SNPs if args.all_snps else variant_processor_hets
     )
     region_str_to_variants, region_str_to_sam_data = loadRegionData(
         args.vcf, args.samgz, genes, variant_processor
@@ -583,13 +577,7 @@ def main():
     # Simulate
     logging.info("Start simulation")
 
-    compresslevel = 3
-
-    # with open(outFile1, "wt") as OUT1, open(outFile2, "wt") as OUT2:
-    # with gzip.open(outFile1, "wt") as OUT1, gzip.open(outFile2, "wt") as OUT2:
-    with gzip.open(outFile1, "wt", compresslevel=compresslevel) as OUT1, gzip.open(
-        outFile2, "wt", compresslevel=compresslevel
-    ) as OUT2:
+    with open_output_file(outFile1) as OUT1, open_output_file(outFile2) as OUT2:
         runSimulation(
             genes,
             region_str_to_variants,
