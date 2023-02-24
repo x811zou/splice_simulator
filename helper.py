@@ -12,47 +12,31 @@ from __future__ import (
     with_statement,
 )
 from builtins import (
-    bytes,
-    dict,
     int,
     list,
-    object,
     range,
     str,
-    ascii,
-    chr,
-    hex,
-    input,
     next,
-    oct,
     open,
-    pow,
-    round,
-    super,
-    filter,
     map,
-    zip,
 )
+import logging
 
 # The above imports should allow this program to run in both Python 2 and
 # Python 3.  You might need to update your version of module "future".
 import sys
 import random
-import copy
-import gzip
 import os
-import re
 import tempfile
-from misc_tools.GffTranscriptReader import GffTranscriptReader
 from misc_tools.Pipe import Pipe
-from misc_tools.ConfigFile import ConfigFile
 from misc_tools.Rex import Rex
-from Bio.Seq import Seq
-from pathlib import Path
+from Bio.Seq import reverse_complement
 from datetime import datetime
 from misc_tools.Translation import Translation
 
 rex = Rex()
+
+
 #######################################
 class Variant:
     def __init__(self, fields):
@@ -67,19 +51,20 @@ class Variant:
             if self.genotype[0] not in {0, 1} or self.genotype[1] not in {0, 1}:
                 self.genotype = None
         # cat HG00096.no_chr.content.SNPs.filtered.vcf.gz | gunzip | awk '{print $10}' | sort | uniq -c
-            # 74304603 0|0
-            # 1071282 0|1
-            # 1065885 1|0
-            # 1376362 1|1
+        # 74304603 0|0
+        # 1071282 0|1
+        # 1065885 1|0
+        # 1376362 1|1
         # cat 123375.no_chr.content.SNPs.filtered.vcf.gz | gunzip | awk '{print $10}' | sort | uniq -c
-            # 21194 ./.
-            # 2917072 0/0
-            # 2354362 0/1
+        # 21194 ./.
+        # 2917072 0/0
+        # 2354362 0/1
         # cat NA12878.no_chr.content.SNPs.filtered.vcf.gz | gunzip | awk '{print $10}' | sort | uniq -c
-            # 5947 0/1
-            # 976007 0|1
-            # 986082 1|0
-            # 1289007 1|1
+        # 5947 0/1
+        # 976007 0|1
+        # 986082 1|0
+        # 1289007 1|1
+
     def isOK(self):
         return self.genotype is not None
 
@@ -103,7 +88,7 @@ def tabix_regions(
         f"{datetime.now()} Start tabix extraction of {len(regions)} regions from file {target_file_path}"
     )
 
-    regions=list(map(lambda x: region_prefix + x, regions))
+    regions = list(map(lambda x: region_prefix + x, regions))
 
     if len(regions) > 1000:
         with tempfile.NamedTemporaryFile(mode="w") as file:
@@ -126,7 +111,7 @@ def tabix_regions(
     lines = output.split("\n")
     records = []
     for line in lines:
-        #print(line)
+        # print(line)
         if len(line) == 0:
             continue
         # start accumulating new region
@@ -165,6 +150,7 @@ def variant_processor_hets(line):
         return None
     return variant
 
+
 def variant_processor_SNPs(line):
     #########
     # this function is used to fetch variants from .vcf
@@ -179,6 +165,7 @@ def variant_processor_SNPs(line):
     if not (len(variant.ref) == 1 and len(variant.alt) == 1):
         return None
     return variant
+
 
 def sam_data_processor(line):
     #########
@@ -204,32 +191,35 @@ def sam_data_processor(line):
     return result
 
 
-def simRead_patmat(refTranscript, altTranscript, qual1, qual2, fragLen, if_print=False):
+def simRead_patmat(
+    input_ref_seq,
+    input_alt_seq,
+    input_ref_seq_rev_comp,
+    input_alt_seq_rev_comp,
+    qual1,
+    qual2,
+    fragLen,
+):
     #####################################################################
     # transcript length
-    L = len(refTranscript.sequence)
+    L = len(input_ref_seq)
+    qual1_len = len(qual1)
+    qual2_len = len(qual2)
     # transcript seq index start/end
     L_end = L - 1
     L_start = 0
     # fragLen: actual read length drawn from SAM
-    if L_end < fragLen or L_end < len(qual1) or L_end < len(qual2):
-        return (None, None, None, None, None, None)
+    if L_end < fragLen or L_end < qual1_len or L_end < qual2_len:
+        return None
     # transcript coord
-    lastStart = min(L_end - fragLen, L_end - len(qual1), L_end - len(qual2))  # 20
+    lastStart = min(L_end - fragLen, L_end - qual1_len, L_end - qual2_len)  # 20
     start1 = random.randrange(lastStart + 1)  # 10
-    start1_genome = refTranscript.mapToGenome(start1)
-    end1 = start1 + len(qual1)  # rec1.readLen  # 10+75 = 85
-    end1_genome = refTranscript.mapToGenome(end1)
+    end1 = start1 + qual1_len  # rec1.readLen  # 10+75 = 85
     LEN1 = abs(end1 - start1)
     end2 = start1 + fragLen  # 10+80 = 90
-    end2_genome = refTranscript.mapToGenome(end2)
-    start2 = end2 - len(qual2)  # rec2.readLen  # 90-75 = 15
-    start2_genome = refTranscript.mapToGenome(start2)
+    start2 = end2 - qual2_len  # rec2.readLen  # 90-75 = 15
     LEN2 = abs(end2 - start2)
-    # if if_print:
-    #     print(
-    #         f"L{L} - start1-end1:{start1_genome}-{end1_genome} - fragLen: {fragLen} - qual1: {len(qual1)} - qual2: {len(qual2)} -  start2:{start2_genome}-{end2_genome}"
-    #     )
+
     assert start1 >= L_start
     assert end1 <= L_end
     assert start2 >= L_start
@@ -237,44 +227,29 @@ def simRead_patmat(refTranscript, altTranscript, qual1, qual2, fragLen, if_print
     assert len(qual1) == LEN1
     assert len(qual2) == LEN2
 
-    # print(
-    #     f"qual1 {len(qual1)} qual2{len(qual2)} len1 {LEN1} len2 {LEN2} fwdSeq length{len(refSeq)} revSeq length {len(refSeq_rev)}"
-    # )
-
     ######## forward strand, same sequence pos for mat/aptf fov
-    refSeq = refTranscript.sequence[start1:end1]
-    altSeq = altTranscript.sequence[start1:end1]
+    simulated_ref_seq = input_ref_seq[start1:end1]
+    simulated_alt_seq = input_alt_seq[start1:end1]
     ######## reverse strand, same sequence pos for mat/apt rev
-    refSeq_rev = Seq(refTranscript.sequence[start2:end2]).reverse_complement()
-    altSeq_rev = Seq(altTranscript.sequence[start2:end2]).reverse_complement()
-    assert len(qual1) == len(refSeq)
-    assert len(qual2) == len(refSeq_rev)
+    simulated_ref_seq_rev = input_ref_seq_rev_comp[L - end2 : L - start2]
+    simulated_alt_seq_rev = input_alt_seq_rev_comp[L - end2 : L - start2]
+
+    assert len(qual1) == len(simulated_ref_seq)
+    assert len(qual2) == len(simulated_ref_seq_rev)
+
     return (
-        refSeq,
-        refSeq_rev,
-        altSeq,
-        altSeq_rev,
-        LEN1,
-        LEN2,
-        start1,
-        end1,
-        start2,
-        end2,
+        simulated_ref_seq,
+        simulated_ref_seq_rev,
+        simulated_alt_seq,
+        simulated_alt_seq_rev,
     )
 
 
-if_print = False
-
-
-def print_verbose(s):
-    if if_print:
-        print(s)
-
-
-def posTlen_to_fragLen(gene, pos1_tlen_to_count, readLen, if_debug=False):
-    transcript_to_mapped_lengths = {}
-    if if_debug:
-        print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>  filtering : valid start/end pos of SAM records map to transcript")
+def posTlen_to_fragLen(gene, pos1_tlen_to_count, readLen):
+    transcript_id_to_mapped_lengths = {}
+    # logging.debug(
+    #     ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>  filtering : valid start/end pos of SAM records map to transcript"
+    # )
     for i in range(gene.getNumTranscripts()):
         transcript = gene.getIthTranscript(i)
         mapped_lengths = []
@@ -299,29 +274,19 @@ def posTlen_to_fragLen(gene, pos1_tlen_to_count, readLen, if_debug=False):
             if end < 0:
                 continue
             mapped_length = abs(end - begin)
-            if if_debug:
-                print(
-                    f"transcript {i+1} - {transcript.getID()}:{pos1_tlen} mapped start,end: ({begin},{end}) fragLen {mapped_length}"
-                )
+            # logging.debug(
+            #     f"transcript {i+1} - {transcript.getID()}:{pos1_tlen} mapped start,end: ({begin},{end}) fragLen {mapped_length}"
+            # )
             if mapped_length < readLen:
                 continue
 
             mapped_lengths.extend([mapped_length for i in range(count)])
 
         if len(mapped_lengths) > 0:
-            transcript_to_mapped_lengths[transcript] = mapped_lengths
+            mapped_lengths.sort()
+            transcript_id_to_mapped_lengths[transcript.getID()] = mapped_lengths
 
-    return transcript_to_mapped_lengths
-
-
-def pick_fragLen(fragLens, max_qual_len, transcript_length):
-    # print(fragLens)
-    random.shuffle(fragLens)
-    for fragLen in fragLens:
-        # print(fragLen)
-        if fragLen < transcript_length and fragLen >= max_qual_len:
-            return fragLen
-    return None
+    return transcript_id_to_mapped_lengths
 
 
 def twoBitID(chr, begin, end):
