@@ -2,36 +2,16 @@
 # =========================================================================
 # Copyright (C) Xue Zou (xue.zou@duke.edu)
 # =========================================================================
-from __future__ import (
-    absolute_import,
-    division,
-    print_function,
-    unicode_literals,
-    generators,
-    nested_scopes,
-    with_statement,
-)
-from builtins import (
-    int,
-    list,
-    range,
-    str,
-    next,
-    open,
-    map,
-)
+
 import logging
 
-# The above imports should allow this program to run in both Python 2 and
-# Python 3.  You might need to update your version of module "future".
-import sys
 import random
 import os
+import subprocess
 import tempfile
+
 from misc_tools.Pipe import Pipe
 from misc_tools.Rex import Rex
-from Bio.Seq import reverse_complement
-from datetime import datetime
 from misc_tools.Translation import Translation
 
 rex = Rex()
@@ -82,52 +62,40 @@ def printRead(header, seq, qual, FH):
 def tabix_regions(
     regions, line_processor, target_file_path, comment_char="#", region_prefix=""
 ):
+    logging.info(
+        f"Start tabix extraction of {len(regions)} regions from file {target_file_path}"
+    )
+
+    if region_prefix != "":
+        regions = list(map(lambda x: region_prefix + x, regions))
+
     region_to_results = {}
+    with tempfile.NamedTemporaryFile(mode="w") as file:
+        for region in regions:
+            chr, rest = region.split(":")
+            start, end = rest.split("-")
+            file.write(f"{chr}\t{start}\t{end}\n")
+        file.flush()
+        command = f"tabix --separate-regions {target_file_path} --regions {file.name}"
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, shell=True)
 
-    print(
-        f"{datetime.now()} Start tabix extraction of {len(regions)} regions from file {target_file_path}"
-    )
+        records = []
+        for line in iter(process.stdout.readline, b""):
+            line = line.decode("utf-8").rstrip()
+            if len(line) == 0:
+                continue
+            # start accumulating new region
+            if line.startswith(comment_char):
+                region_str = line[1:].strip(region_prefix)
+                records = []
+                region_to_results[region_str] = records
+                continue
 
-    regions = list(map(lambda x: region_prefix + x, regions))
+            result = line_processor(line)
+            if result is not None:
+                records.append(result)
 
-    if len(regions) > 1000:
-        with tempfile.NamedTemporaryFile(mode="w") as file:
-            for region in regions:
-                chr, rest = region.split(":")
-                start, end = rest.split("-")
-                file.write(f"{chr}\t{start}\t{end}\n")
-            file.flush()
-            command = (
-                f"tabix --separate-regions {target_file_path} --regions {file.name}"
-            )
-            output = Pipe.run(command)
-    else:
-        region_batch = " ".join(regions)
-        command = f"tabix --separate-regions {target_file_path} {region_batch}"
-        output = Pipe.run(command)
-    if len(output) == 0:
-        return region_to_results
-
-    lines = output.split("\n")
-    records = []
-    for line in lines:
-        # print(line)
-        if len(line) == 0:
-            continue
-        # start accumulating new region
-        if line.startswith(comment_char):
-            region_str = line[1:].strip(region_prefix)
-            records = []
-            region_to_results[region_str] = records
-            continue
-
-        result = line_processor(line)
-        if result is not None:
-            records.append(result)
-
-    print(
-        f"{datetime.now()} Got {len(region_to_results)} / {len(regions)} regions with data"
-    )
+    logging.info(f"Got {len(region_to_results)} / {len(regions)} regions with data")
 
     return region_to_results
 
@@ -331,11 +299,7 @@ def load_twoBit_TranscriptSeqs(gene, genome, path):
 def run2bitBatch(path, inputFile, genome):
     cmd = f"{os.path.join(path, 'twoBitToFa')} -seqList={inputFile} {genome} stdout"
 
-    print(
-        f"{datetime.now()} twobit command {cmd}",
-        file=sys.stderr,
-        flush=True,
-    )
+    logging.debug(f"twobit command {cmd}")
 
     output = Pipe.run(cmd)
     lines = output.rstrip().split("\n")
@@ -369,11 +333,7 @@ def constructTwoBitInput(genes, file):
                     f.write(f"{twoBitID(chr, exon.begin, exon.end)}\n")
                     count += 1
 
-    print(
-        f"{datetime.now()} generated two bit input of {count} lines",
-        file=sys.stderr,
-        flush=True,
-    )
+    logging.debug(f"generated two bit input of {count} lines")
 
 
 def annotate_transcripts(genes, id_to_seq):
