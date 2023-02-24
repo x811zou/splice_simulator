@@ -236,7 +236,7 @@ def runSimulation(
     for i, gene in enumerate(genes):
         if i % 100 == 0:
             logging.info(f"processed {i} / {n_genes} genes")
-            logging.info(f"memory usage {getMemoryUsageMB()} MB")
+            logging.debug(f"memory usage {getMemoryUsageMB()} MB")
         if max_genes > 0 and i >= max_genes:
             break
         mat_reads = 0
@@ -475,18 +475,18 @@ def main():
         twobitId_to_seq = run2bitBatch(twoBitDir, twoBitInputFile.name, genome2bit)
     logging.info(f"done running 2bit {len(twobitId_to_seq)} ids")
 
-    global matches, mismatches
-    matches = 0
-    mismatches = 0
     annotate_transcripts(genes, twobitId_to_seq)
     logging.info(f"done annotating transcripts")
 
+    logging.info(f"fetching data for {len(genes)} genes")
     variant_processor = (
         variant_processor_SNPs if args.all_snps else variant_processor_hets
     )
     region_str_to_variants, region_str_to_sam_data = loadRegionData(
         args.vcf, args.samgz, genes, variant_processor
     )
+
+    logging.info(f"done fetching data memory usage: {getMemoryUsageMB()}")
 
     # Simulate
     logging.info("Start simulation")
@@ -514,6 +514,10 @@ def main():
         print("[ Top 10 differences ]")
         for stat in top_stats[:10]:
             print(stat)
+
+        print(
+            "high water mark: %d" % (tracemalloc.get_traced_memory()[1] / (1024**2))
+        )
 
     # print stats
     # print("")

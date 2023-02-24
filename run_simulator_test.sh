@@ -21,12 +21,13 @@ python3 ${=profile} unbiased-spliced-rna-test.py \
   $reference_dir/gencode.v19.annotation.level12.gtf \
   ~/data/NA12878.sam.gz \
   ~/data/NA12878.no_chr.content.SNPs.filtered.vcf.gz \
-  --out1 >(pigz -3 -c > $out1) --out2 >(pigz -3 -c > $out2) \
+  --out1 >(pigz -3 -c > $out1) \
+  --out2 >(pigz -3 -c > $out2) \
   --max_genes $max_genes \
   --read_depth 100 \
   --seed 0 \
   --all_snps \
-  --chr chr21 \
+  --chr chr5 \
 
 wait
 
