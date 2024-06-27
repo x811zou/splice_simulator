@@ -357,46 +357,53 @@ def open_output_file(filename):
 # module load htslib
 # module load samtools/1.11-rhel8
 ######### 1000 Genome individuals
-# N=2
-# sample="NA12878"
-# util_dir=/hpc/home/bmajoros/twobit
-# genome=/datacommons/allenlab/hg19/hg19.2bit
-# gff=/datacommons/allenlab/hg19/filter/gencode.v19.annotation.level12.gtf
-# sam=/hpc/group/allenlab/scarlett/output/RNAseq/GIAB/$sample/tmp/simulation_SNPs_even_101/${sample}.sam.gz
-# vcfgz=/hpc/group/allenlab/scarlett/output/RNAseq/GIAB/$sample/${sample}.no_chr.content.SNPs.filtered.vcf.gz
-# out_path=/hpc/group/allenlab/scarlett/output/RNAseq/GIAB/$sample/tmp/simulation_test
+# N=21
+# sample="NA12878_chr21"
+# util_dir=/data2/reference/two_bit_linux
+# genome=/data2/reference/hg19/hg19.2bit
+# gff=/data2/reference/gencode.v19.annotation.level12.gtf
+# samgz=/data2/BEASTIE_example_output/NA12878_chr21/tmp/simulation/${sample}.sam.gz
+# vcfgz=/home/scarlett/github/BEASTIE/BEASTIE_example/NA12878_chr21/HG001_GRCh37_GIAB.chr21.vcf.gz
+# out_fwd=/data2/BEASTIE_example_output/NA12878_chr21/tmp/simulation/${sample}.fwd_fastq.gz
+# out_rev=/data2/BEASTIE_example_output/NA12878_chr21/tmp/simulation/${sample}.rev_fastq.gz
 # read_depth=100
 ######### GSD individuals
 # sample="123375"
 # sam=/hpc/group/allenlab/scarlett/output/RNAseq/GSD/$sample/tmp/simulation_SNPs_even_100/${sample}.sam.gz
 # vcfgz=/hpc/group/allenlab/scarlett/output/RNAseq/GSD/$sample/${sample}.no_chr.content.SNPs.filtered.vcf.gz
-# out_path=/hpc/group/allenlab/scarlett/output/RNAseq/GSD/$sample/tmp/simulation_test
+# out_fwd=/hpc/group/allenlab/scarlett/output/RNAseq/GSD/$sample/tmp/simulation_test
+# out_rev=/hpc/group/allenlab/scarlett/output/RNAseq/GSD/$sample/tmp/simulation_test
 # read_depth=100
 #
 # EXAMPLE running command:
-# python /hpc/group/allenlab/scarlett/script/spliced_simulator/unbiased-spliced-rna-test.py $util_dir $genome $gff $sam $vcfgz $out_path $read_depth --out-prefix chr${N} --chr chr${N} --allSNPs --gene ENSG00000213626.7 -v
+# python /home/scarlett/github/BEASTIE/spliced_simulator/unbiased-spliced-rna-test.py $util_dir $genome $gff $samgz $vcfgz --read_depth $read_depth --out1 $out_fwd --out2 $out_rev --chr chr${N}
+#simulation_pipeline(gff, target_chromosome, target_gene, twoBitDir, genome2bit, outFile1, outFile2, SNPs, VCF, SAMGZ, RANDOM, READ_DEPTH, MAX_genes)
 # ============================================
 
 
 def main():
+    if args is None:
+        args = sys.argv[1:]
     parser = argparse.ArgumentParser()
-    parser.add_argument("twobit", help="full path to two bit")
-    parser.add_argument("genome", help="full path to hg19.2bit")
-    parser.add_argument("gff", help="full path to gencode gtf file")
-    parser.add_argument("samgz", help="full path to sam.gz")
-    parser.add_argument("vcf", help="full path to VCF file without chr")
-    parser.add_argument("--read_depth", help="per-base-read-depth", type=int)
+    parser.add_argument("twobit", help="full path to two bit",required=True)
+    parser.add_argument("genome", help="full path to hg19.2bit",required=True)
+    parser.add_argument("gff", help="full path to gencode gtf file",required=True)
+    parser.add_argument("samgz", help="full path to sam.gz",required=True)
+    parser.add_argument("vcfgz", help="full path to VCF file without chr",required=True)
+    parser.add_argument("--read_depth", help="per-base-read-depth", type=int,required=True)
     parser.add_argument(
         "--out1",
-        help="output path for forward strand fastq reads",
-        default="./read_1.fastq.gz",
+        help="full path for forward strand fastq reads",required=True,
     )
     parser.add_argument(
         "--out2",
-        help="output path for reverse strand fastq reads",
-        default="./read_2.fastq.gz",
+        help="full path for reverse strand fastq reads",required=True,
     )
-    parser.add_argument("--chr", help="specific chromosome to simulate")
+    parser.add_argument("--chr", help="specific chromosome Number to simulate",type=int,required=True)
+    parser.add_argument(
+        "-v", "--verbose", action="store_true", help="print lots of info", default=False
+    )
+    parser.add_argument("--all_snps", action="store_true", help="include all SNPs", default=True)
     parser.add_argument("--gene", help="specific gene to simulate", default=None)
     parser.add_argument(
         "-r",
@@ -410,10 +417,6 @@ def main():
         default=random.randrange(sys.maxsize),
         type=int,
     )
-    parser.add_argument(
-        "-v", "--verbose", action="store_true", help="print lots of info"
-    )
-    parser.add_argument("--all_snps", action="store_true", help="include all SNPs")
     parser.add_argument(
         "--max_genes", help="max number of genes to simulate", type=int, default=0
     )
@@ -450,15 +453,26 @@ def main():
 
     target_chromosome = args.chr
     target_gene = args.gene
-
+    gff = args.gff
+    twoBitDir = args.twobit
+    genome2bit = args.genome
     outFile1 = args.out1
     outFile2 = args.out2
+    SNPs = args.all_snps
+    VCF = args.vcf
+    SAMGZ = args.samgz
+    RANDOM = args.random
+    READ_DEPTH = args.read_depth
+    MAX_genes = args.max_genes
     logging.info(f"output files {outFile1} {outFile2}")
 
-    # Load GFF and fragment lengths
+    simulation_pipeline(gff, target_chromosome, target_gene, twoBitDir, genome2bit, outFile1, outFile2, SNPs, VCF, SAMGZ, RANDOM, READ_DEPTH, MAX_genes)
 
+
+def simulation_pipeline(gff, target_chromosome, target_gene, twoBitDir, genome2bit, outFile1, outFile2, SNPs, vcf, samgz, random, read_depth, max_genes):
+    # Load GFF and fragment lengths
     logging.info(f"reading GFF...")
-    genes = loadGenes(args.gff, target_chromosome, target_gene)
+    genes = loadGenes(gff, target_chromosome, target_gene)
     logging.info(f"done reading GFF...")
 
     logging.info(f"found {len(genes)} genes for transcripts")
@@ -467,8 +481,6 @@ def main():
         return
 
     # annotate transcripts
-    twoBitDir = args.twobit
-    genome2bit = args.genome
     logging.info(f"running 2bit {twoBitDir} {genome2bit}")
     with tempfile.NamedTemporaryFile(mode="w") as twoBitInputFile:
         constructTwoBitInput(genes, twoBitInputFile.name)
@@ -480,10 +492,10 @@ def main():
 
     logging.info(f"fetching data for {len(genes)} genes")
     variant_processor = (
-        variant_processor_SNPs if args.all_snps else variant_processor_hets
+        variant_processor_SNPs if SNPs else variant_processor_hets
     )
     region_str_to_variants, region_str_to_sam_data = loadRegionData(
-        args.vcf, args.samgz, genes, variant_processor
+        vcf, samgz, genes, variant_processor
     )
 
     logging.info(f"done fetching data memory usage: {getMemoryUsageMB()}")
@@ -499,9 +511,9 @@ def main():
             genes,
             region_str_to_variants,
             region_str_to_sam_data,
-            args.random,
-            args.read_depth,
-            args.max_genes,
+            random,
+            read_depth,
+            max_genes,
             lambda id, seq, qual: write_read(id, seq, qual, OUT1),
             lambda id, seq, qual: write_read(id, seq, qual, OUT2),
         )
